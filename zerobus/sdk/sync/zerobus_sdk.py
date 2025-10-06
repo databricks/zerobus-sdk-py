@@ -125,6 +125,8 @@ class ZerobusStream:
         stub (zerobus_service_pb2_grpc.ZerobusStub): The gRPC stub for the service.
         client_id (str): The client ID.
         client_secret (str): The client secret.
+        unity_catalog_url (str): The URL of the Unity Catalog endpoint.
+        workspace_id (str): The workspace ID.
         table_properties (TableProperties): The properties of the target table.
         options (StreamConfigurationOptions): Configuration options for the stream.
         grpc_channel (grpc.Channel): The underlying gRPC channel.
