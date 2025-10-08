@@ -1,0 +1,237 @@
+# Contributing to Zerobus SDK for Python
+
+We happily welcome contributions to the Zerobus SDK for Python. We use [GitHub Issues](https://github.com/databricks/zerobus-sdk-py/issues) to track community reported issues and [GitHub Pull Requests](https://github.com/databricks/zerobus-sdk-py/pulls) for accepting changes.
+
+Contributions are licensed on a license-in/license-out basis.
+
+## Communication
+
+Before starting work on a major feature, please open a GitHub issue. We will make sure no one else is already working on it and that it is aligned with the goals of the project.
+
+A "major feature" is defined as any change that is > 100 LOC altered (not including tests), or changes any user-facing behavior.
+
+We will use the GitHub issue to discuss the feature and come to agreement. This is to prevent your time being wasted, as well as ours. The GitHub review process for major features is also important so that organizations with commit access can come to agreement on design.
+
+If it is appropriate to write a design document, the document must be hosted either in the GitHub tracking issue, or linked to from the issue and hosted in a world-readable location.
+
+Small patches and bug fixes don't need prior communication.
+
+## Development Setup
+
+### Prerequisites
+
+- Python 3.7 or higher
+- Git
+- pip
+
+### Setting Up Your Development Environment
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/databricks/zerobus-sdk-py.git
+   cd zerobus-sdk-py
+   ```
+
+2. **Create and activate a virtual environment:**
+   ```bash
+   make dev
+   ```
+
+   This will:
+   - Create a virtual environment in `.venv`
+   - Install the package in development mode with all dev dependencies
+
+3. **Activate the virtual environment:**
+   ```bash
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
+
+## Coding Style
+
+Code style is enforced by a formatter check in your pull request. We use [Black](https://github.com/psf/black) to format our code. Run `make fmt` to ensure your code is properly formatted prior to raising a pull request.
+
+### Running the Formatter
+
+Format your code before committing:
+
+```bash
+make fmt
+```
+
+This runs:
+- **Black**: Code formatting
+- **autoflake**: Remove unused imports
+- **isort**: Sort imports
+
+### Running Linters
+
+Check your code for issues:
+
+```bash
+make lint
+```
+
+This runs:
+- **pycodestyle**: Style guide enforcement
+- **autoflake**: Check for unused imports
+
+## Pull Request Process
+
+1. **Create a feature branch:**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+2. **Make your changes:**
+   - Write clear, concise commit messages
+   - Follow existing code style
+   - Update documentation as needed
+
+3. **Format your code:**
+   ```bash
+   make fmt
+   ```
+
+4. **Commit your changes:**
+   ```bash
+   git add .
+   git commit -m "Add feature: description of your changes"
+   ```
+
+5. **Push to your fork:**
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+
+6. **Create a Pull Request:**
+   - Provide a clear description of changes
+   - Reference any related issues
+   - Ensure all CI checks pass
+
+## Signed Commits
+
+This repo requires all contributors to sign their commits. To configure this, you can follow [Github's documentation](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits) to create a GPG key, upload it to your Github account, and configure your git client to sign commits.
+
+## Developer Certificate of Origin
+
+To contribute to this repository, you must sign off your commits to certify that you have the right to contribute the code and that it complies with the open source license. The rules are pretty simple, if you can certify the content of [DCO](./DCO), then simply add a "Signed-off-by" line to your commit message to certify your compliance. Please use your real name as pseudonymous/anonymous contributions are not accepted.
+
+```
+Signed-off-by: Joe Smith <joe.smith@email.com>
+```
+
+If you set your `user.name` and `user.email` git configs, you can sign your commit automatically with `git commit -s`:
+
+```bash
+git commit -s -m "Your commit message"
+```
+
+## Code Review Guidelines
+
+When reviewing code:
+
+- Check for adherence to code style
+- Look for potential edge cases
+- Consider performance implications
+- Ensure documentation is updated
+
+## Commit Message Guidelines
+
+Follow these conventions for commit messages:
+
+- Use present tense: "Add feature" not "Added feature"
+- Use imperative mood: "Fix bug" not "Fixes bug"
+- First line should be 50 characters or less
+- Reference issues: "Fix #123: Description of fix"
+
+Example:
+```
+Add async stream creation example
+
+- Add async_example.py demonstrating non-blocking ingestion
+- Update README with async API documentation
+
+Fixes #42
+```
+
+## Documentation
+
+### Updating Documentation
+
+- Update docstrings for all public APIs
+- Use Google-style docstrings
+- Include examples in docstrings where helpful
+- Update README.md for user-facing changes
+- Update examples/ for new features
+
+Example docstring:
+```python
+def ingest_record(self, record) -> RecordAcknowledgment:
+    """
+    Submits a single record for ingestion into the stream.
+
+    This method may block if the maximum number of in-flight records
+    has been reached.
+
+    Args:
+        record: The Protobuf message object to be ingested.
+
+    Returns:
+        RecordAcknowledgment: An object to wait on for the server's acknowledgment.
+
+    Raises:
+        ZerobusException: If the stream is not in a valid state for ingestion.
+
+    Example:
+        >>> record = AirQuality(device_name="sensor-1", temp=25)
+        >>> ack = stream.ingest_record(record)
+        >>> ack.wait_for_ack()
+    """
+```
+
+## Continuous Integration
+
+All pull requests must pass CI checks:
+
+- **fmt**: Runs formatting checks (black, autoflake, isort)
+
+The formatting check runs `make dev fmt` and then checks for any git differences. If there are differences, the check will fail.
+
+You can view CI results in the GitHub Actions tab of the pull request.
+
+## Makefile Targets
+
+Available make targets:
+
+- `make dev` - Set up development environment
+- `make install` - Install package
+- `make build` - Build wheel package
+- `make fmt` - Format code with black, autoflake, and isort
+- `make lint` - Run linting with pycodestyle
+- `make clean` - Remove build artifacts
+- `make help` - Show available targets
+
+## Versioning
+
+We follow [Semantic Versioning](https://semver.org/):
+
+- **MAJOR**: Incompatible API changes
+- **MINOR**: Backwards-compatible functionality additions
+- **PATCH**: Backwards-compatible bug fixes
+
+## Getting Help
+
+- **Issues**: Open an issue on GitHub for bugs or feature requests
+- **Discussions**: Use GitHub Discussions for questions
+- **Documentation**: Check the README and examples/
+
+## Package Name
+
+The package is published on PyPI as `databricks-zerobus-ingest-sdk`.
+
+## Code of Conduct
+
+- Be respectful and inclusive
+- Welcome newcomers
+- Focus on constructive feedback
+- Follow the [Python Community Code of Conduct](https://www.python.org/psf/conduct/)
