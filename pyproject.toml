@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "zerobus-sdk"
+name = "databricks-zerobus-ingest-sdk"
 version = "0.1.0"
-description = "Zerobus SDK for Python"
+description = "Databricks Zerobus Ingest SDK for Python"
 requires-python = ">=3.7"
 keywords = ["zerobus", "databricks", "sdk"]
 classifiers = [
@@ -28,5 +28,22 @@ dependencies = [
     "protobuf>=4.21.0,<7.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-mock",
+    "black",
+    "pycodestyle",
+    "autoflake",
+    "isort",
+    "wheel",
+    "pytest-asyncio",
+]
+
 [tool.setuptools.packages.find]
 include = ["zerobus", "zerobus.*"]
+
+[tool.black]
+line-length = 120
+target-version = ['py37', 'py38', 'py39', 'py310', 'py311', 'py312', 'py313']
