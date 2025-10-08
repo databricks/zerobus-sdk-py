@@ -107,12 +107,6 @@ GRANT SELECT, MODIFY ON TABLE <catalog_name>.default.air_quality TO `<service-pr
 
 ### Installation
 
-#### From PyPI (Recommended)
-
-```bash
-pip install databricks-zerobus-ingest-sdk
-```
-
 #### From Source
 
 ```bash
