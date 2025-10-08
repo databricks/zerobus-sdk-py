@@ -12,7 +12,7 @@ Specifically, try to answer the two following questions:
   reader might be missing. For example, were there any decisions behind the 
   change that are not reflected in the code itself? 
 
-The “why part” is the most important of the two as it usually cannot be 
+The "why part" is the most important of the two as it usually cannot be
 inferred from the code itself. A well-written PR description will help future
 developers (including your future self) to know how to interact and update your
 code.
