@@ -30,15 +30,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest",
-    "pytest-cov",
-    "pytest-mock",
     "black",
     "pycodestyle",
     "autoflake",
     "isort",
     "wheel",
-    "pytest-asyncio",
 ]
 
 [tool.setuptools.packages.find]

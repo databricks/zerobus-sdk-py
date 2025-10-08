@@ -1,12 +1,13 @@
-from google.protobuf.descriptor import Descriptor
-from typing import Callable, Optional
-from enum import Enum
-import grpc
-import logging
-import requests
 import json
-from .zerobus_service_pb2 import IngestRecordResponse
+import logging
+from enum import Enum
+from typing import Callable, Optional
 
+import grpc
+import requests
+from google.protobuf.descriptor import Descriptor
+
+from .zerobus_service_pb2 import IngestRecordResponse
 
 logger = logging.getLogger("zerobus_sdk")
 logger.addHandler(logging.NullHandler())
@@ -108,7 +109,6 @@ class NonRetriableException(ZerobusException):
     Inherits from ZerobusException and indicates a non-retriable error has occurred.
     """
 
-    pass
 
 
 class _StreamFailureType(Enum):

@@ -6,21 +6,11 @@ from typing import Callable, Iterator
 import grpc
 from google.protobuf.descriptor_pb2 import DescriptorProto
 
-from ..shared import (
-    ZerobusException,
-    NOT_RETRIABLE_GRPC_CODES,
-    log_and_get_exception,
-    NonRetriableException,
-    StreamConfigurationOptions,
-    StreamState,
-    TableProperties,
-    _StreamFailureInfo,
-    _StreamFailureType,
-    zerobus_service_pb2,
-    zerobus_service_pb2_grpc,
-    get_zerobus_token
-)
-
+from ..shared import (NOT_RETRIABLE_GRPC_CODES, NonRetriableException,
+                      StreamConfigurationOptions, StreamState, TableProperties,
+                      ZerobusException, _StreamFailureInfo, _StreamFailureType,
+                      get_zerobus_token, log_and_get_exception,
+                      zerobus_service_pb2, zerobus_service_pb2_grpc)
 
 logger = logging.getLogger("zerobus_sdk")
 
@@ -113,7 +103,10 @@ class ZerobusStream:
     async def __create_stream(self):
         headers = [
             ("x-databricks-zerobus-table-name", self._table_properties.table_name),
-            ("authorization", f"Bearer {get_zerobus_token(self._table_properties.table_name, self._workspace_id, self._unity_catalog_url, self._client_id, self._client_secret)}")
+            (
+                "authorization",
+                f"Bearer {get_zerobus_token(self._table_properties.table_name, self._workspace_id, self._unity_catalog_url, self._client_id, self._client_secret)}",
+            ),
         ]
 
         # Stream already opened
@@ -736,7 +729,9 @@ class ZerobusSdk:
         channel = grpc.aio.secure_channel(self.__host, grpc.ssl_channel_credentials())
 
         stub = zerobus_service_pb2_grpc.ZerobusStub(channel)
-        stream = ZerobusStream(stub, client_id, client_secret, self.__unity_catalog_url, self.__workspace_id, table_properties, options)
+        stream = ZerobusStream(
+            stub, client_id, client_secret, self.__unity_catalog_url, self.__workspace_id, table_properties, options
+        )
         await stream._initialize()
         return stream
 
@@ -760,7 +755,14 @@ class ZerobusSdk:
         if old_stream_state != StreamState.CLOSED and old_stream_state != StreamState.FAILED:
             raise ZerobusException("Stream is not closed. Cannot create new stream.")
 
-        new_stream = await self.create_stream(old_stream._client_id, old_stream._client_secret, old_stream._unity_catalog_url, old_stream._workspace_id, old_stream._table_properties, old_stream._options)
+        new_stream = await self.create_stream(
+            old_stream._client_id,
+            old_stream._client_secret,
+            old_stream._unity_catalog_url,
+            old_stream._workspace_id,
+            old_stream._table_properties,
+            old_stream._options,
+        )
 
         # Loop over unacked records and ingest them into the new stream
         unacked_records = old_stream.get_unacked_records()

@@ -33,10 +33,10 @@ class ZerobusStub(object):
             channel: A grpc.Channel.
         """
         self.EphemeralStream = channel.stream_stream(
-                '/databricks.zerobus.Zerobus/EphemeralStream',
-                request_serializer=zerobus__service__pb2.EphemeralStreamRequest.SerializeToString,
-                response_deserializer=zerobus__service__pb2.EphemeralStreamResponse.FromString,
-                )
+            "/databricks.zerobus.Zerobus/EphemeralStream",
+            request_serializer=zerobus__service__pb2.EphemeralStreamRequest.SerializeToString,
+            response_deserializer=zerobus__service__pb2.EphemeralStreamResponse.FromString,
+        )
 
 
 class ZerobusServicer(object):
@@ -70,24 +70,23 @@ class ZerobusServicer(object):
         - Receive durability confirmations via IngestRecordResponse.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+        context.set_details("Method not implemented!")
+        raise NotImplementedError("Method not implemented!")
 
 
 def add_ZerobusServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'EphemeralStream': grpc.stream_stream_rpc_method_handler(
-                    servicer.EphemeralStream,
-                    request_deserializer=zerobus__service__pb2.EphemeralStreamRequest.FromString,
-                    response_serializer=zerobus__service__pb2.EphemeralStreamResponse.SerializeToString,
-            ),
+        "EphemeralStream": grpc.stream_stream_rpc_method_handler(
+            servicer.EphemeralStream,
+            request_deserializer=zerobus__service__pb2.EphemeralStreamRequest.FromString,
+            response_serializer=zerobus__service__pb2.EphemeralStreamResponse.SerializeToString,
+        ),
     }
-    generic_handler = grpc.method_handlers_generic_handler(
-            'databricks.zerobus.Zerobus', rpc_method_handlers)
+    generic_handler = grpc.method_handlers_generic_handler("databricks.zerobus.Zerobus", rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
 
 
- # This class is part of an EXPERIMENTAL API.
+# This class is part of an EXPERIMENTAL API.
 class Zerobus(object):
     """Version information for the Zerobus service.
     Current version: v1 (package: databricks.zerobus).
@@ -110,18 +109,30 @@ class Zerobus(object):
     """
 
     @staticmethod
-    def EphemeralStream(request_iterator,
+    def EphemeralStream(
+        request_iterator,
+        target,
+        options=(),
+        channel_credentials=None,
+        call_credentials=None,
+        insecure=False,
+        compression=None,
+        wait_for_ready=None,
+        timeout=None,
+        metadata=None,
+    ):
+        return grpc.experimental.stream_stream(
+            request_iterator,
             target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.stream_stream(request_iterator, target, '/databricks.zerobus.Zerobus/EphemeralStream',
+            "/databricks.zerobus.Zerobus/EphemeralStream",
             zerobus__service__pb2.EphemeralStreamRequest.SerializeToString,
             zerobus__service__pb2.EphemeralStreamResponse.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+        )

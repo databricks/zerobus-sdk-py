@@ -9,24 +9,22 @@ Use Case: Best for low-volume ingestion where durability is critical and you nee
 immediate confirmation of each write.
 """
 
-import time
 import logging
 import os
+import time
+
+from zerobus.sdk.shared import StreamConfigurationOptions
+from zerobus.sdk.sync import ZerobusSdk
 
 # You'll need to generate Python classes from record.proto:
 # protoc --python_out=. record.proto
 # Then uncomment the following line:
 # import record_pb2
 
-from zerobus.sdk.sync import ZerobusSdk
-from zerobus.sdk.shared import TableProperties, StreamConfigurationOptions
 
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -71,7 +69,7 @@ def main():
 
     try:
         # Step 1: Initialize the SDK
-        sdk = ZerobusSdk(SERVER_ENDPOINT, UNITY_CATALOG_ENDPOINT)
+        ZerobusSdk(SERVER_ENDPOINT, UNITY_CATALOG_ENDPOINT)
         logger.info("✓ SDK initialized")
 
         # Step 2: Define table properties
@@ -91,7 +89,7 @@ def main():
             recovery=True,
             recovery_timeout_ms=15000,
             recovery_backoff_ms=2000,
-            recovery_retries=3
+            recovery_retries=3,
         )
 
         # Step 4: Create a stream
@@ -105,8 +103,7 @@ def main():
 
         # Step 5: Ingest records synchronously
         logger.info(f"\nIngesting {NUM_RECORDS} records (blocking mode)...")
-        start_time = time.time()
-        success_count = 0
+        time.time()
 
         # Uncomment when using actual SDK:
         # try:
