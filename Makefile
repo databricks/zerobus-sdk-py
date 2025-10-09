@@ -1,5 +1,5 @@
 # Default Python version (can be overridden: make build PYTHON=python3.11)
-PYTHON ?= python3.9
+PYTHON ?= python3
 
 .PHONY: dev install build clean install-wheel help fmt lint
 
