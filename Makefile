@@ -17,12 +17,8 @@ help:
 
 dev:
 	$(PYTHON) -m venv .venv
-ifeq ($(OS), Windows_NT)
-	.venv\Scripts\activate
-else
-	. .venv/bin/activate
-endif
-	pip install -e '.[dev]'
+	.venv/bin/pip install --upgrade pip
+	.venv/bin/pip install -e '.[dev]'
 
 install:
 	pip install -e .
@@ -48,10 +44,10 @@ clean:
 	rm -fr dist *.egg-info .pytest_cache build htmlcov .venv
 
 fmt:
-	black zerobus examples
-	autoflake -ri zerobus examples
-	isort zerobus examples
+	.venv/bin/black zerobus examples
+	.venv/bin/autoflake -ri zerobus examples
+	.venv/bin/isort zerobus examples
 
 lint:
-	pycodestyle zerobus
-	autoflake --check-diff --quiet --recursive zerobus
+	.venv/bin/pycodestyle zerobus
+	.venv/bin/autoflake --check-diff --quiet --recursive zerobus

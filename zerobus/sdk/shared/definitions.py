@@ -110,7 +110,6 @@ class NonRetriableException(ZerobusException):
     """
 
 
-
 class _StreamFailureType(Enum):
     UNKNOWN = 0
     SENDER_ERROR = 1
