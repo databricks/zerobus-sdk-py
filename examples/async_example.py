@@ -9,24 +9,21 @@ Records are still durably written, but acknowledgments are handled asynchronousl
 """
 
 import asyncio
-import time
 import logging
 import os
+import time
+
+from zerobus.sdk.aio import ZerobusSdk
+from zerobus.sdk.shared import StreamConfigurationOptions
 
 # You'll need to generate Python classes from record.proto:
 # protoc --python_out=. record.proto
 # Then uncomment the following line:
 # import record_pb2
 
-from zerobus.sdk.aio import ZerobusSdk
-from zerobus.sdk.shared import TableProperties, StreamConfigurationOptions
-
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -71,6 +68,7 @@ def create_ack_callback():
 
     The callback is invoked by the SDK whenever records are acknowledged by the server.
     """
+
     def callback(response):
         offset = response.durability_ack_up_to_offset
         # Log every 10000 records
@@ -86,14 +84,14 @@ async def main():
 
     try:
         # Step 1: Initialize the SDK
-        sdk = ZerobusSdk(SERVER_ENDPOINT, UNITY_CATALOG_ENDPOINT)
+        ZerobusSdk(SERVER_ENDPOINT, UNITY_CATALOG_ENDPOINT)
         logger.info("✓ SDK initialized")
 
         # Step 2: Configure stream options with ack callback
         options = StreamConfigurationOptions(
             max_inflight_records=50_000,  # Allow 50k records in flight
-            recovery=True,                 # Enable automatic recovery
-            ack_callback=create_ack_callback()  # Track acknowledgments
+            recovery=True,  # Enable automatic recovery
+            ack_callback=create_ack_callback(),  # Track acknowledgments
         )
         logger.info("✓ Stream configuration created")
 
@@ -118,7 +116,7 @@ async def main():
 
         # Step 5: Ingest records asynchronously
         logger.info(f"\nIngesting {NUM_RECORDS} records (non-blocking mode)...")
-        start_time = time.time()
+        time.time()
 
         # Uncomment when using actual SDK:
         # try:

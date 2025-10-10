@@ -41,9 +41,9 @@ The Databricks Zerobus Ingest SDK for Python provides a high-performance client 
 
 ### Dependencies
 
-- `protobuf` >= 3.20.0
-- `grpcio` >= 1.50.0
-- `requests` >= 2.25.0
+- `protobuf` >= 6.31.0, < 7.0
+- `grpcio` >= 1.68.0, < 2.0
+- `requests` >= 2.28.1, < 3
 
 ## Quick Start User Guide
 
@@ -132,11 +132,11 @@ message AirQuality {
 Compile the protobuf:
 
 ```bash
-pip install protobuf
-protoc --python_out=. record.proto
+pip install "grpcio-tools>=1.60.0,<2.0"
+python -m grpc_tools.protoc --python_out=. --proto_path=. record.proto
 ```
 
-This generates a `record_pb2.py` file.
+This generates a `record_pb2.py` file compatible with protobuf 6.x.
 
 ### Write Your Client Code
 

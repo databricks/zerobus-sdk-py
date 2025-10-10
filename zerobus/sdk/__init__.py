@@ -6,13 +6,8 @@ please use `from zerobus_sdk.aio import ...`.
 """
 
 from . import sync
-from .shared import (
-    TableProperties,
-    StreamState,
-    ZerobusException,
-    StreamConfigurationOptions,
-    NonRetriableException,
-)
+from .shared import (NonRetriableException, StreamConfigurationOptions,
+                     StreamState, TableProperties, ZerobusException)
 
 ZerobusSdk = sync.ZerobusSdk
 ZerobusStream = sync.ZerobusStream

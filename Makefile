@@ -1,7 +1,7 @@
 # Default Python version (can be overridden: make build PYTHON=python3.11)
-PYTHON ?= python3.9
+PYTHON ?= python3
 
-.PHONY: dev install build clean install-wheel help
+.PHONY: dev install build clean install-wheel help fmt lint
 
 help:
 	@echo "Available targets:"
@@ -10,17 +10,15 @@ help:
 	@echo "  make install        - Install package directly (editable mode)"
 	@echo "  make dev            - Set up development environment"
 	@echo "  make clean          - Remove build artifacts"
+	@echo "  make fmt            - Format code with black, autoflake, and isort"
+	@echo "  make lint           - Run linting with pycodestyle"
 	@echo ""
 	@echo "Example: make build PYTHON=python3.11"
 
 dev:
 	$(PYTHON) -m venv .venv
-ifeq ($(OS), Windows_NT)
-	.venv\Scripts\activate
-else
-	. .venv/bin/activate
-endif
-	pip install -e '.[dev]'
+	.venv/bin/pip install --upgrade pip
+	.venv/bin/pip install -e '.[dev]'
 
 install:
 	pip install -e .
@@ -44,3 +42,12 @@ install-wheel:
 
 clean:
 	rm -fr dist *.egg-info .pytest_cache build htmlcov .venv
+
+fmt:
+	.venv/bin/black zerobus examples
+	.venv/bin/autoflake -ri --exclude '*_pb2*.py' zerobus examples
+	.venv/bin/isort zerobus examples
+
+lint:
+	.venv/bin/pycodestyle zerobus
+	.venv/bin/autoflake --check-diff --quiet --recursive zerobus

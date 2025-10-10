@@ -1,17 +1,9 @@
-from .definitions import (
-    TableProperties,
-    StreamConfigurationOptions,
-    ZerobusException,
-    StreamState,
-    _StreamFailureType,
-    _StreamFailureInfo,
-    NonRetriableException,
-    NOT_RETRIABLE_GRPC_CODES,
-    log_and_get_exception,
-    get_zerobus_token,
-)
-from . import zerobus_service_pb2_grpc
-from . import zerobus_service_pb2
+from . import zerobus_service_pb2, zerobus_service_pb2_grpc
+from .definitions import (NOT_RETRIABLE_GRPC_CODES, NonRetriableException,
+                          StreamConfigurationOptions, StreamState,
+                          TableProperties, ZerobusException,
+                          _StreamFailureInfo, _StreamFailureType,
+                          get_zerobus_token, log_and_get_exception)
 
 __all__ = [
     "TableProperties",
