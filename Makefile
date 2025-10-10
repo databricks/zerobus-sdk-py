@@ -45,7 +45,7 @@ clean:
 
 fmt:
 	.venv/bin/black zerobus examples
-	.venv/bin/autoflake -ri zerobus examples
+	.venv/bin/autoflake -ri --exclude '*_pb2*.py' zerobus examples
 	.venv/bin/isort zerobus examples
 
 lint:

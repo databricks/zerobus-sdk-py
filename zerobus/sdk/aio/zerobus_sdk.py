@@ -387,7 +387,7 @@ class ZerobusStream:
 
                 record_ack_received_future, record, serialized_record = await self.__next_record()
 
-                if record == None:  # noqa: E711
+                if record is None:
                     continue
 
                 self.__pending_futures[offset_id] = (
@@ -726,7 +726,11 @@ class ZerobusSdk:
         Returns:
             ZerobusStream: An initialized and active stream instance.
         """
-        channel = grpc.aio.secure_channel(self.__host, grpc.ssl_channel_credentials())
+        channel = grpc.aio.secure_channel(
+            self.__host,
+            grpc.ssl_channel_credentials(),
+            options=[("grpc.max_send_message_length", -1), ("grpc.max_receive_message_length", -1)],
+        )
 
         stub = zerobus_service_pb2_grpc.ZerobusStub(channel)
         stream = ZerobusStream(

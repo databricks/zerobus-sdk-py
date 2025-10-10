@@ -843,7 +843,11 @@ class ZerobusSdk:
         Returns:
             ZerobusStream: An initialized and active stream instance.
         """
-        channel = grpc.secure_channel(self.__host, grpc.ssl_channel_credentials())
+        channel = grpc.secure_channel(
+            self.__host,
+            grpc.ssl_channel_credentials(),
+            options=[("grpc.max_send_message_length", -1), ("grpc.max_receive_message_length", -1)],
+        )
 
         stub = zerobus_service_pb2_grpc.ZerobusStub(channel)
         stream = ZerobusStream(
