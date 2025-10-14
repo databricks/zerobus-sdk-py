@@ -49,8 +49,9 @@ class TestZerobusEphemeralStream(unittest.IsolatedAsyncioTestCase):
         mock_channel = MockGrpcChannel(initial_state=grpc.ChannelConnectivity.IDLE)
         mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
 
-        with patch("grpc.secure_channel", return_value=mock_channel), patch(
-            "zerobus.sdk.sync.zerobus_sdk.get_zerobus_token", return_value="mock_token"
+        with (
+            patch("grpc.secure_channel", return_value=mock_channel),
+            patch("zerobus.sdk.sync.zerobus_sdk.get_zerobus_token", return_value="mock_token"),
         ):
             sdk_handle = ZerobusSdk(SERVER_ENDPOINT, unity_catalog_url="https://test.unity.catalog.url")
             try:
