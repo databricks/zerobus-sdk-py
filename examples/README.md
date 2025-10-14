@@ -20,30 +20,65 @@ Demonstrates synchronous record ingestion where each record is waited for before
 - Immediate error handling
 - Works in any Python environment
 
+**Demonstrates:**
+- SDK initialization and configuration
+- Stream creation with configuration options
+- Synchronous record ingestion with acknowledgment
+- Progress tracking
+- Stream flushing and closing
+- Error handling
+- Performance metrics
+
 **Run:**
 ```bash
+# Set environment variables
+export DATABRICKS_CLIENT_ID="your-service-principal-id"
+export DATABRICKS_CLIENT_SECRET="your-service-principal-secret"
+export ZEROBUS_SERVER_ENDPOINT="workspace-id.zerobus.region.cloud.databricks.com"
+export DATABRICKS_WORKSPACE_URL="https://your-workspace.cloud.databricks.com"
+export ZEROBUS_TABLE_NAME="catalog.schema.table"
+
+# Run the example
 python examples/sync_example.py
 ```
 
 ### 2. Asynchronous Ingestion (`async_example.py`)
 
-Demonstrates asynchronous record ingestion using Python's asyncio.
+Demonstrates asynchronous record ingestion using Python's asyncio framework.
 
 **Best for:**
 - Applications already using asyncio
 - Concurrent operations with other async tasks
 - Async web frameworks (FastAPI, aiohttp, etc.)
 - Event-driven architectures
+- Integration with other async operations in your application
 
 **Key features:**
 - Asynchronous ingestion with asyncio
-- Non-blocking API
+- Non-blocking API for concurrent execution
 - Ack callback for progress tracking
-- Integrates with async event loops
-- Concurrent execution with other async operations
+- Integrates seamlessly with async event loops
+- Allows concurrent execution with other async operations
+
+**Demonstrates:**
+- Async SDK initialization
+- Stream configuration with acknowledgment callbacks
+- Asynchronous record ingestion
+- Batch submission tracking
+- Stream flushing and durability waiting
+- Error handling in async context
+- Performance metrics including submit time vs total time
 
 **Run:**
 ```bash
+# Set environment variables (same as sync example)
+export DATABRICKS_CLIENT_ID="your-service-principal-id"
+export DATABRICKS_CLIENT_SECRET="your-service-principal-secret"
+export ZEROBUS_SERVER_ENDPOINT="workspace-id.zerobus.region.cloud.databricks.com"
+export DATABRICKS_WORKSPACE_URL="https://your-workspace.cloud.databricks.com"
+export ZEROBUS_TABLE_NAME="catalog.schema.table"
+
+# Run the example
 python examples/async_example.py
 ```
 
@@ -63,7 +98,7 @@ pip install .
 
 ### 2. Generate Protobuf Classes
 
-Define your schema in a `.proto` file (see `record.proto` for an example):
+The examples include a sample `record.proto` file that defines an `AirQuality` message:
 
 ```proto
 syntax = "proto2";
@@ -75,52 +110,59 @@ message AirQuality {
 }
 ```
 
-Generate Python classes:
+The examples are already set up to use this schema. To regenerate the Python classes if needed:
+
 ```bash
-pip install protobuf
-protoc --python_out=. record.proto
+cd examples
+pip install "grpcio-tools>=1.60.0,<2.0"
+python -m grpc_tools.protoc --python_out=. --proto_path=. record.proto
 ```
 
-This will create a `record_pb2.py` file that you can import in your code.
+This generates a `record_pb2.py` file compatible with protobuf 6.x that is imported by the example scripts.
+
+To use your own schema, modify `record.proto` and regenerate the Python classes.
 
 ### 3. Configure Credentials
 
-Set environment variables:
+The examples are fully runnable and use environment variables for configuration:
+
 ```bash
-export DATABRICKS_CLIENT_ID="your-oauth-client-id"
-export DATABRICKS_CLIENT_SECRET="your-oauth-client-secret"
+export DATABRICKS_CLIENT_ID="your-service-principal-application-id"
+export DATABRICKS_CLIENT_SECRET="your-service-principal-secret"
+export ZEROBUS_SERVER_ENDPOINT="workspace-id.zerobus.region.cloud.databricks.com"
+export DATABRICKS_WORKSPACE_URL="https://your-workspace.cloud.databricks.com"
+export ZEROBUS_TABLE_NAME="catalog.schema.table"
 ```
 
-Or update the values directly in the example files:
-```python
-CLIENT_ID = "your-oauth-client-id"
-CLIENT_SECRET = "your-oauth-client-secret"
-SERVER_ENDPOINT = "your-shard-id.zerobus.region.cloud.databricks.com"
-UNITY_CATALOG_ENDPOINT = "https://your-workspace.cloud.databricks.com"
-TABLE_NAME = "catalog.schema.table"
+Alternatively, you can edit the default values directly in the example files.
+
+### 4. Run the Examples
+
+The examples are now ready to run! They will automatically:
+- Check for proper configuration
+- Initialize logging
+- Create a stream with the configured credentials
+- Ingest sample records
+- Display progress and performance metrics
+- Handle errors gracefully
+- Clean up resources
+
+Simply run:
+```bash
+python examples/sync_example.py
+# or
+python examples/async_example.py
 ```
 
-### 4. Update the Examples
-
-Uncomment the relevant code sections in the examples and update them to use your protobuf schema:
-
-```python
-# Import your generated protobuf module
-import record_pb2
-
-# Create table properties with your descriptor
-table_properties = TableProperties(
-    TABLE_NAME,
-    record_pb2.AirQuality.DESCRIPTOR
-)
-
-# Create and ingest records
-record = record_pb2.AirQuality(
-    device_name="sensor-1",
-    temp=25,
-    humidity=60
-)
-```
+The examples demonstrate all SDK functionalities including:
+- SDK and stream initialization
+- Table properties configuration
+- Stream configuration options
+- Record ingestion (sync/async)
+- Progress tracking with callbacks
+- Stream flushing and closing
+- Error handling
+- Performance measurement
 
 ## Configuration Options
 
@@ -183,7 +225,8 @@ pip install .
 
 Make sure you've generated the Python protobuf classes:
 ```bash
-protoc --python_out=. record.proto
+pip install "grpcio-tools>=1.60.0,<2.0"
+python -m grpc_tools.protoc --python_out=. --proto_path=. record.proto
 ```
 
 And that the generated file is in the same directory or in your Python path.

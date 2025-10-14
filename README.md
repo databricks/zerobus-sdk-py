@@ -1,7 +1,6 @@
 # Databricks Zerobus Ingest SDK for Python
 
-[![PyPI version](https://img.shields.io/pypi/v/databricks-zerobus-ingest-sdk)](https://pypi.org/project/databricks-zerobus-ingest-sdk/)
-[![Python](https://img.shields.io/badge/python-3.7+-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.8+-blue)](https://www.python.org/)
 
 The Databricks Zerobus Ingest SDK for Python provides a high-performance client for ingesting data directly into Databricks Delta tables using the Zerobus streaming protocol.
 
@@ -31,18 +30,19 @@ The Databricks Zerobus Ingest SDK for Python provides a high-performance client 
 - **Protocol Buffers**: Strongly-typed schema using protobuf
 - **OAuth 2.0 authentication**: Secure authentication with client credentials
 - **Sync and Async support**: Both synchronous and asynchronous APIs
+- **Comprehensive logging**: Detailed logging using Python's standard logging framework
 
 ## Requirements
 
 ### Runtime Requirements
 
-- **Python**: 3.7 or higher
+- **Python**: 3.8 or higher
 - **Databricks workspace** with Zerobus access enabled
 
 ### Dependencies
 
 - `protobuf` >= 6.31.0, < 7.0
-- `grpcio` >= 1.68.0, < 2.0
+- `grpcio` >= 1.60.0, < 2.0
 - `requests` >= 2.28.1, < 3
 
 ## Quick Start User Guide
@@ -143,9 +143,16 @@ This generates a `record_pb2.py` file compatible with protobuf 6.x.
 #### Synchronous Example
 
 ```python
+import logging
 from zerobus.sdk.sync import ZerobusSdk
 from zerobus.sdk.shared import TableProperties
 import record_pb2
+
+# Configure logging (optional but recommended)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 # Configuration
 server_endpoint = "1234567890123456.zerobus.us-west-2.cloud.databricks.com"
@@ -193,9 +200,16 @@ finally:
 
 ```python
 import asyncio
+import logging
 from zerobus.sdk.aio import ZerobusSdk
 from zerobus.sdk.shared import TableProperties
 import record_pb2
+
+# Configure logging (optional but recommended)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 async def main():
     # Configuration
@@ -244,19 +258,37 @@ asyncio.run(main())
 
 ## Usage Examples
 
-See the `examples/` directory for complete working examples:
+See the `examples/` directory for complete, runnable examples:
 
-- **sync_example.py** - Synchronous ingestion with progress tracking
-- **async_example.py** - High-throughput asynchronous ingestion
+- **sync_example.py** - Synchronous ingestion with progress tracking and all SDK features
+- **async_example.py** - Asynchronous ingestion using asyncio with acknowledgment callbacks
+
+Both examples are fully functional and demonstrate:
+- SDK initialization and configuration
+- Stream creation and management
+- Record ingestion (sync/async)
+- Progress tracking and callbacks
+- Error handling
+- Performance metrics
+- Proper resource cleanup
+
+To run the examples, set your credentials as environment variables and execute the scripts. See [examples/README.md](examples/README.md) for detailed instructions.
 
 ### Blocking Ingestion
 
 Ingest records synchronously, waiting for each record to be acknowledged:
 
 ```python
+import logging
 from zerobus.sdk.sync import ZerobusSdk
 from zerobus.sdk.shared import TableProperties
 import record_pb2
+
+# Configure logging (optional but recommended)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 sdk = ZerobusSdk(server_endpoint, workspace_url)
 table_properties = TableProperties(table_name, record_pb2.AirQuality.DESCRIPTOR)
@@ -283,9 +315,16 @@ Ingest records asynchronously for maximum throughput:
 
 ```python
 import asyncio
+import logging
 from zerobus.sdk.aio import ZerobusSdk
 from zerobus.sdk.shared import TableProperties, StreamConfigurationOptions
 import record_pb2
+
+# Configure logging (optional but recommended)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 async def main():
     options = StreamConfigurationOptions(

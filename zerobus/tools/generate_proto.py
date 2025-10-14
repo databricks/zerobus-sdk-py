@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import base64
 import re
 import sys
 from typing import Dict, List, Optional, Tuple
@@ -21,7 +22,8 @@ Examples:
     # Generate proto file for a Unity Catalog table
     python generate_proto.py \\
         --uc-endpoint "https://your-workspace.cloud.databricks.com" \\
-        --uc-token "dapi1234567890" \\
+        --client-id "your-client-id" \\
+        --client-secret "your-client-secret" \\
         --table "catalog.schema.table_name" \\
         --proto-msg "TableMessage" \\
         --output "output.proto"
@@ -55,10 +57,17 @@ Type mappings:
     )
 
     parser.add_argument(
-        "--uc-token",
+        "--client-id",
         type=str,
         required=True,
-        help="Unity Catalog authentication token (e.g., dapi123...)",
+        help="OAuth client ID (service principal application ID)",
+    )
+
+    parser.add_argument(
+        "--client-secret",
+        type=str,
+        required=True,
+        help="OAuth client secret (service principal secret)",
     )
 
     parser.add_argument(
@@ -83,6 +92,52 @@ Type mappings:
     )
 
     return parser.parse_args()
+
+
+def get_oauth_token(uc_endpoint: str, client_id: str, client_secret: str) -> str:
+    """
+    Obtains an OAuth token using client credentials flow.
+
+    This method uses basic OAuth 2.0 client credentials flow without resource or authorization details.
+
+    Args:
+        uc_endpoint: The Unity Catalog endpoint URL
+        client_id: The OAuth client ID
+        client_secret: The OAuth client secret
+
+    Returns:
+        The OAuth access token (JWT)
+
+    Raises:
+        requests.exceptions.RequestException: If the token request fails
+    """
+    url = urljoin(uc_endpoint, "/oidc/v1/token")
+
+    # Build OAuth 2.0 client credentials request with minimal scope
+    data = {"grant_type": "client_credentials", "scope": "all-apis"}
+
+    # Encode credentials for HTTP Basic authentication
+    credentials = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": f"Basic {credentials}",
+    }
+
+    response = requests.post(url, data=data, headers=headers)
+
+    if response.status_code != 200:
+        raise requests.exceptions.RequestException(
+            f"OAuth request failed with status {response.status_code}: {response.text}"
+        )
+
+    response_json = response.json()
+    access_token = response_json.get("access_token")
+
+    if not access_token:
+        raise requests.exceptions.RequestException("No access token received from OAuth response")
+
+    return access_token
 
 
 def fetch_table_info(endpoint: str, token: str, table: str) -> Dict[str, str]:
@@ -493,8 +548,11 @@ def main() -> Optional[int]:
     args = parse_args()
 
     try:
+        # Get OAuth token using client credentials
+        token = get_oauth_token(args.uc_endpoint, args.client_id, args.client_secret)
+
         # Fetch table information from Unity Catalog
-        table_info = fetch_table_info(args.uc_endpoint, args.uc_token, args.table)
+        table_info = fetch_table_info(args.uc_endpoint, token, args.table)
 
         # Extract column information
         columns = extract_columns(table_info)

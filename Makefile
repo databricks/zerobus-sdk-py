@@ -1,7 +1,7 @@
 # Default Python version (can be overridden: make build PYTHON=python3.11)
 PYTHON ?= python3
 
-.PHONY: dev install build clean install-wheel help fmt lint
+.PHONY: dev install build clean install-wheel help fmt lint test coverage
 
 help:
 	@echo "Available targets:"
@@ -12,6 +12,8 @@ help:
 	@echo "  make clean          - Remove build artifacts"
 	@echo "  make fmt            - Format code with black, autoflake, and isort"
 	@echo "  make lint           - Run linting with pycodestyle"
+	@echo "  make test           - Run unit tests with pytest"
+	@echo "  make coverage       - Run coverage and open HTML report"
 	@echo ""
 	@echo "Example: make build PYTHON=python3.11"
 
@@ -44,10 +46,13 @@ clean:
 	rm -fr dist *.egg-info .pytest_cache build htmlcov .venv
 
 fmt:
-	.venv/bin/black zerobus examples
-	.venv/bin/autoflake -ri --exclude '*_pb2*.py' zerobus examples
-	.venv/bin/isort zerobus examples
+	.venv/bin/black zerobus examples tests
+	.venv/bin/autoflake -ri --exclude '*_pb2*.py' zerobus examples tests
+	.venv/bin/isort zerobus examples tests
 
 lint:
 	.venv/bin/pycodestyle zerobus
 	.venv/bin/autoflake --check-diff --quiet --recursive zerobus
+
+test:
+	.venv/bin/pytest --cov=zerobus --cov-report html --cov-report xml tests

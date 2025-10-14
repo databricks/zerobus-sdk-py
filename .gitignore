@@ -1,8 +1,32 @@
-__pycache__/
+# Virtual environments
+.venv
+*.venv
+
+# Build artifacts
+build
+dist
+*.egg-info
+.eggs
+
+# Python cache
+__pycache__
 *.pyc
-.venv/
-build/
-dist/
-.pytest_cache/
-.mypy_cache/
-*.egg-info/
+*.pyo
+
+# Testing
+.pytest_cache
+.coverage
+.coverage.*
+htmlcov
+coverage.xml
+
+# IDE
+.idea
+.vscode
+*.iml
+
+# Type checking
+.mypy_cache
+
+# Databricks
+.databricks

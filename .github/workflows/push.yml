@@ -7,10 +7,28 @@ on:
     types: [checks_requested]
 
 jobs:
+  tests-ubuntu:
+    uses: ./.github/workflows/test.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        pyVersion: [ '3.8', '3.9', '3.10', '3.11', '3.12' ]
+    with:
+      os: ubuntu-latest
+      pyVersion: ${{ matrix.pyVersion }}
+
+  tests-windows:
+      uses: ./.github/workflows/test.yml
+      strategy:
+        fail-fast: false
+        matrix:
+          pyVersion: [ '3.9', '3.10', '3.11', '3.12' ]
+      with:
+        os: windows-latest
+        pyVersion: ${{ matrix.pyVersion }}
+
   fmt:
-    runs-on:
-      group: databricks-protected-runner-group
-      labels: linux-ubuntu-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
@@ -21,3 +39,13 @@ jobs:
 
       - name: Fail on differences
         run: git diff --exit-code
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lint code
+        run: make dev lint
