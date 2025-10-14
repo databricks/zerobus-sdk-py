@@ -1,6 +1,12 @@
 # Default Python version (can be overridden: make build PYTHON=python3.11)
 PYTHON ?= python3
 
+ifeq ($(OS),Windows_NT)
+    VENV = .venv/Scripts/python
+else
+    VENV = .venv/bin/python
+endif
+
 .PHONY: dev install build clean install-wheel help fmt lint test
 
 help:
@@ -19,13 +25,8 @@ help:
 
 dev:
 	$(PYTHON) -m venv .venv
-ifeq ($(OS),Windows_NT)
-	.venv\Scripts\python -m pip install --upgrade pip
-	.venv\Scripts\python -m pip install -e ".[dev]"
-else
-	.venv/bin/python -m pip install --upgrade pip
-	.venv/bin/python -m pip install -e '.[dev]'
-endif
+	$(VENV) -m pip install --upgrade pip
+	$(VENV) -m pip install -e '.[dev]'
 
 install:
 	pip install -e .
@@ -51,13 +52,13 @@ clean:
 	rm -fr dist *.egg-info .pytest_cache build htmlcov .venv
 
 fmt:
-	.venv/bin/black zerobus examples tests
-	.venv/bin/autoflake -ri --exclude '*_pb2*.py' zerobus examples tests
-	.venv/bin/isort zerobus examples tests
+	$(VENV) -m black zerobus examples tests
+	$(VENV) -m autoflake -ri --exclude '*_pb2*.py' zerobus examples tests
+	$(VENV) -m isort zerobus examples tests
 
 lint:
-	.venv/bin/pycodestyle zerobus
-	.venv/bin/autoflake --check-diff --quiet --recursive zerobus
+	$(VENV) -m pycodestyle zerobus
+	$(VENV) -m autoflake --check-diff --quiet --recursive --exclude '*_pb2*.py' zerobus
 
 test:
-	.venv/bin/pytest --cov=zerobus --cov-report html --cov-report xml tests
+	$(VENV) -m pytest --cov=zerobus --cov-report html --cov-report xml tests
