@@ -12,6 +12,7 @@ The Databricks Zerobus Ingest SDK for Python provides a high-performance client 
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
   - [Define Your Protocol Buffer Schema](#define-your-protocol-buffer-schema)
+  - [Generate Protocol Buffer Schema from Unity Catalog (Alternative)](#generate-protocol-buffer-schema-from-unity-catalog-alternative)
   - [Write Your Client Code](#write-your-client-code)
 - [Usage Examples](#usage-examples)
   - [Blocking Ingestion](#blocking-ingestion)
@@ -137,6 +138,87 @@ python -m grpc_tools.protoc --python_out=. --proto_path=. record.proto
 ```
 
 This generates a `record_pb2.py` file compatible with protobuf 6.x.
+
+### Generate Protocol Buffer Schema from Unity Catalog (Alternative)
+
+Instead of manually writing and compiling your protobuf schema, you can automatically generate it from an existing Unity Catalog table schema using the included `generate_proto.py` tool.
+
+#### Using the Proto Generation Tool
+
+The `generate_proto.py` tool fetches your table schema from Unity Catalog and generates a corresponding proto2 definition file with the correct type mappings.
+
+**Basic Usage:**
+
+```bash
+python -m zerobus.tools.generate_proto \
+    --uc-endpoint "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com" \
+    --client-id "your-service-principal-application-id" \
+    --client-secret "your-service-principal-secret" \
+    --table "main.default.air_quality" \
+    --output "record.proto"
+```
+
+**Parameters:**
+- `--uc-endpoint`: Your workspace URL (e.g., `https://dbc-a1b2c3d4-e5f6.cloud.databricks.com`)
+- `--client-id`: Service principal application ID
+- `--client-secret`: Service principal secret
+- `--table`: Fully qualified table name (catalog.schema.table)
+- `--output`: Output path for the generated proto file
+- `--proto-msg`: (Optional) Name for the protobuf message (defaults to table name)
+
+**Example:**
+
+For a table defined as:
+```sql
+CREATE TABLE main.default.air_quality (
+    device_name STRING,
+    temp INT,
+    humidity BIGINT
+)
+USING DELTA;
+```
+
+Running the generation tool will create `record.proto`:
+```protobuf
+syntax = "proto2";
+
+message air_quality {
+    optional string device_name = 1;
+    optional int32 temp = 2;
+    optional int64 humidity = 3;
+}
+```
+
+After generating the proto file, compile it as shown above:
+```bash
+pip install "grpcio-tools>=1.60.0,<2.0"
+python -m grpc_tools.protoc --python_out=. --proto_path=. record.proto
+```
+
+**Type Mappings:**
+
+The tool automatically maps Unity Catalog types to proto2 types:
+
+| Delta Type | Proto2 Type |
+|-----------|-------------|
+| INT, SMALLINT, SHORT | int32 |
+| BIGINT, LONG | int64 |
+| FLOAT | float |
+| DOUBLE | double |
+| STRING, VARCHAR | string |
+| BOOLEAN | bool |
+| BINARY | bytes |
+| DATE | int32 |
+| TIMESTAMP | int64 |
+| ARRAY\<type\> | repeated type |
+| MAP\<key, value\> | map\<key, value\> |
+| STRUCT\<fields\> | nested message |
+
+**Benefits:**
+- No manual schema creation required
+- Ensures schema consistency between your table and protobuf definitions
+- Automatically handles complex types (arrays, maps, structs)
+- Reduces errors from manual type mapping
 
 ### Write Your Client Code
 
