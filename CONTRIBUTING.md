@@ -20,7 +20,7 @@ Small patches and bug fixes don't need prior communication.
 
 ### Prerequisites
 
-- Python 3.7 or higher
+- Python 3.9 or higher
 - Git
 - pip
 
@@ -75,6 +75,24 @@ This runs:
 - **pycodestyle**: Style guide enforcement
 - **autoflake**: Check for unused imports
 
+### Running Tests
+
+Run the test suite to ensure your changes don't break existing functionality:
+
+```bash
+make test
+```
+
+This runs:
+- **pytest**: Unit tests with coverage reports
+- Generates HTML and XML coverage reports in `htmlcov/` and `coverage.xml`
+
+Open the coverage report in your browser:
+```bash
+open htmlcov/index.html  # macOS
+xdg-open htmlcov/index.html  # Linux
+```
+
 ## Pull Request Process
 
 1. **Create a feature branch:**
@@ -87,9 +105,10 @@ This runs:
    - Follow existing code style
    - Update documentation as needed
 
-3. **Format your code:**
+3. **Format and test your code:**
    ```bash
    make fmt
+   make test
    ```
 
 4. **Commit your changes:**
@@ -194,6 +213,9 @@ def ingest_record(self, record) -> RecordAcknowledgment:
 All pull requests must pass CI checks:
 
 - **fmt**: Runs formatting checks (black, autoflake, isort)
+- **lint**: Runs linting checks (pycodestyle, autoflake)
+- **tests-ubuntu**: Runs tests on Ubuntu with Python 3.9, 3.10, 3.11, 3.12
+- **tests-windows**: Runs tests on Windows with Python 3.9, 3.10, 3.11, 3.12
 
 The formatting check runs `make dev fmt` and then checks for any git differences. If there are differences, the check will fail.
 
@@ -204,10 +226,12 @@ You can view CI results in the GitHub Actions tab of the pull request.
 Available make targets:
 
 - `make dev` - Set up development environment
-- `make install` - Install package
-- `make build` - Build wheel package
+- `make install` - Install package in editable mode
+- `make build` - Build wheel package (use `PYTHON=python3.X` to specify version)
+- `make install-wheel` - Install the built wheel
 - `make fmt` - Format code with black, autoflake, and isort
-- `make lint` - Run linting with pycodestyle
+- `make lint` - Run linting with pycodestyle and autoflake
+- `make test` - Run unit tests with pytest and generate coverage reports
 - `make clean` - Remove build artifacts
 - `make help` - Show available targets
 

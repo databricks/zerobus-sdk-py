@@ -1,7 +1,13 @@
 # Default Python version (can be overridden: make build PYTHON=python3.11)
 PYTHON ?= python3
 
-.PHONY: dev install build clean install-wheel help fmt lint
+ifeq ($(OS),Windows_NT)
+    VENV = .venv/Scripts/python
+else
+    VENV = .venv/bin/python
+endif
+
+.PHONY: dev install build clean install-wheel help fmt lint test
 
 help:
 	@echo "Available targets:"
@@ -12,13 +18,15 @@ help:
 	@echo "  make clean          - Remove build artifacts"
 	@echo "  make fmt            - Format code with black, autoflake, and isort"
 	@echo "  make lint           - Run linting with pycodestyle"
+	@echo "  make test           - Run unit tests with pytest"
+	@echo "  make coverage       - Run coverage and open HTML report"
 	@echo ""
 	@echo "Example: make build PYTHON=python3.11"
 
 dev:
 	$(PYTHON) -m venv .venv
-	.venv/bin/pip install --upgrade pip
-	.venv/bin/pip install -e '.[dev]'
+	$(VENV) -m pip install --upgrade pip
+	$(VENV) -m pip install -e '.[dev]'
 
 install:
 	pip install -e .
@@ -44,10 +52,13 @@ clean:
 	rm -fr dist *.egg-info .pytest_cache build htmlcov .venv
 
 fmt:
-	.venv/bin/black zerobus examples
-	.venv/bin/autoflake -ri --exclude '*_pb2*.py' zerobus examples
-	.venv/bin/isort zerobus examples
+	$(VENV) -m black zerobus examples tests
+	$(VENV) -m autoflake -ri --exclude '*_pb2*.py' zerobus examples tests
+	$(VENV) -m isort zerobus examples tests
 
 lint:
-	.venv/bin/pycodestyle zerobus
-	.venv/bin/autoflake --check-diff --quiet --recursive zerobus
+	$(VENV) -m pycodestyle zerobus
+	$(VENV) -m autoflake --check-diff --quiet --recursive --exclude '*_pb2*.py' zerobus
+
+test:
+	$(VENV) -m pytest --cov=zerobus --cov-report html --cov-report xml tests

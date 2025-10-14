@@ -762,8 +762,6 @@ class ZerobusSdk:
         new_stream = await self.create_stream(
             old_stream._client_id,
             old_stream._client_secret,
-            old_stream._unity_catalog_url,
-            old_stream._workspace_id,
             old_stream._table_properties,
             old_stream._options,
         )
