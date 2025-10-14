@@ -14,7 +14,9 @@ jobs:
   test:
     strategy:
         fail-fast: false
-    runs-on: ${{ inputs.os }}
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: ${{ inputs.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
