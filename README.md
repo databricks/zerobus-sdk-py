@@ -1,6 +1,6 @@
 # Databricks Zerobus Ingest SDK for Python
 
-[![Python](https://img.shields.io/badge/python-3.8+-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.9+-blue)](https://www.python.org/)
 
 The Databricks Zerobus Ingest SDK for Python provides a high-performance client for ingesting data directly into Databricks Delta tables using the Zerobus streaming protocol.
 
@@ -36,7 +36,7 @@ The Databricks Zerobus Ingest SDK for Python provides a high-performance client 
 
 ### Runtime Requirements
 
-- **Python**: 3.8 or higher
+- **Python**: 3.9 or higher
 - **Databricks workspace** with Zerobus access enabled
 
 ### Dependencies

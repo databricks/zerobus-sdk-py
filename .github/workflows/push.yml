@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pyVersion: [ '3.8', '3.9', '3.10', '3.11', '3.12' ]
+        pyVersion: [ '3.9', '3.10', '3.11', '3.12' ]
     with:
       os: linux-ubuntu-latest
       pyVersion: ${{ matrix.pyVersion }}
@@ -43,7 +43,9 @@ jobs:
         run: git diff --exit-code
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
 
     steps:
       - name: Checkout

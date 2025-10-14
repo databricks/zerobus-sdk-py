@@ -13,12 +13,11 @@ import logging
 import os
 import time
 
-from zerobus.sdk.shared import StreamConfigurationOptions, TableProperties
-from zerobus.sdk.sync import ZerobusSdk
-
 # Import the generated protobuf module
 import record_pb2
 
+from zerobus.sdk.shared import StreamConfigurationOptions, TableProperties
+from zerobus.sdk.sync import ZerobusSdk
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -44,11 +43,7 @@ def create_sample_record(index):
 
     You can customize this to create records with different data patterns.
     """
-    return record_pb2.AirQuality(
-        device_name=f"sensor-{index % 10}",
-        temp=20 + (index % 15),
-        humidity=50 + (index % 40)
-    )
+    return record_pb2.AirQuality(device_name=f"sensor-{index % 10}", temp=20 + (index % 15), humidity=50 + (index % 40))
 
 
 def main():
@@ -77,10 +72,7 @@ def main():
         logger.info("✓ SDK initialized")
 
         # Step 2: Define table properties
-        table_properties = TableProperties(
-            TABLE_NAME,
-            record_pb2.AirQuality.DESCRIPTOR
-        )
+        table_properties = TableProperties(TABLE_NAME, record_pb2.AirQuality.DESCRIPTOR)
         logger.info(f"✓ Table properties configured for: {TABLE_NAME}")
 
         # Step 3: Create stream configuration (optional)
@@ -94,12 +86,7 @@ def main():
         logger.info("✓ Stream configuration created")
 
         # Step 4: Create a stream
-        stream = sdk.create_stream(
-            CLIENT_ID,
-            CLIENT_SECRET,
-            table_properties,
-            options
-        )
+        stream = sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options)
         logger.info(f"✓ Stream created: {stream.stream_id}")
 
         # Step 5: Ingest records synchronously

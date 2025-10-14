@@ -19,8 +19,13 @@ help:
 
 dev:
 	$(PYTHON) -m venv .venv
-	.venv/bin/pip install --upgrade pip
-	.venv/bin/pip install -e '.[dev]'
+ifeq ($(OS),Windows_NT)
+	.venv\Scripts\python -m pip install --upgrade pip
+	.venv\Scripts\python -m pip install -e ".[dev]"
+else
+	.venv/bin/python -m pip install --upgrade pip
+	.venv/bin/python -m pip install -e '.[dev]'
+endif
 
 install:
 	pip install -e .

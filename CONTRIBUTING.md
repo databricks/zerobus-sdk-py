@@ -20,7 +20,7 @@ Small patches and bug fixes don't need prior communication.
 
 ### Prerequisites
 
-- Python 3.8 or higher
+- Python 3.9 or higher
 - Git
 - pip
 
@@ -214,7 +214,7 @@ All pull requests must pass CI checks:
 
 - **fmt**: Runs formatting checks (black, autoflake, isort)
 - **lint**: Runs linting checks (pycodestyle, autoflake)
-- **tests-ubuntu**: Runs tests on Ubuntu with Python 3.8, 3.9, 3.10, 3.11, 3.12
+- **tests-ubuntu**: Runs tests on Ubuntu with Python 3.9, 3.10, 3.11, 3.12
 - **tests-windows**: Runs tests on Windows with Python 3.9, 3.10, 3.11, 3.12
 
 The formatting check runs `make dev fmt` and then checks for any git differences. If there are differences, the check will fail.
