@@ -1,15 +1,18 @@
 [build-system]
-requires = ["setuptools>=61.0.0", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "databricks-zerobus-ingest-sdk"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Databricks Zerobus Ingest SDK for Python"
+readme = "README.md"
 requires-python = ">=3.9"
 keywords = ["zerobus", "databricks", "sdk"]
+license = "LicenseRef-Proprietary"
+license-files = ["LICENSE"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Intended Audience :: System Administrators",
@@ -43,6 +46,9 @@ dev = [
     "pytest-xdist>=3.6.1,<4.0",
     "pytest-asyncio",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "zerobus.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["zerobus", "zerobus.*"]
