@@ -1,11 +1,18 @@
 # Databricks Zerobus Ingest SDK for Python
 
-[![Python](https://img.shields.io/badge/python-3.9+-blue)](https://www.python.org/)
+[![PyPI - Downloads](https://img.shields.io/pypi/dw/databricks-zerobus-ingest-sdk)](https://pypistats.org/packages/databricks-zerobus-ingest-sdk)
+[![PyPI - License](https://img.shields.io/pypi/l/databricks-zerobus-ingest-sdk)](https://github.com/databricks/zerobus-sdk-py/blob/main/LICENSE)
+![PyPI](https://img.shields.io/pypi/v/databricks-zerobus-ingest-sdk)
 
-The Databricks Zerobus Ingest SDK for Python provides a high-performance client for ingesting data directly into Databricks Delta tables using the Zerobus streaming protocol.
+[Public Preview](https://docs.databricks.com/release-notes/release-types.html): This SDK is supported for production use cases and is available to all customers. Databricks is actively working on stabilizing the Zerobus Ingest SDK for Python. Minor version updates may include backwards-incompatible changes.
+
+We are keen to hear feedback from you on this SDK. Please [file issues](https://github.com/databricks/zerobus-sdk-py/issues), and we will address them.
+
+The Databricks Zerobus Ingest SDK for Python provides a high-performance client for ingesting data directly into Databricks Delta tables using the Zerobus streaming protocol. | See also the [SDK for Rust](https://github.com/databricks/zerobus-sdk-rs) | See also the [SDK for Java](https://github.com/databricks/zerobus-sdk-java)
 
 ## Table of Contents
 
+- [Disclaimer](#disclaimer)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Quick Start User Guide](#quick-start-user-guide)
@@ -21,7 +28,6 @@ The Databricks Zerobus Ingest SDK for Python provides a high-performance client 
 - [Error Handling](#error-handling)
 - [API Reference](#api-reference)
 - [Best Practices](#best-practices)
-- [Disclaimer](#disclaimer)
 
 ## Features
 
@@ -108,7 +114,17 @@ GRANT SELECT, MODIFY ON TABLE <catalog_name>.default.air_quality TO `<service-pr
 
 ### Installation
 
+#### From PyPI
+
+Install the latest stable version using pip:
+
+```bash
+pip install databricks-zerobus-ingest
+```
+
 #### From Source
+
+Clone the repository and install from source:
 
 ```bash
 git clone https://github.com/databricks/zerobus-sdk-py.git
@@ -748,9 +764,3 @@ NonRetriableException(message: str, cause: Exception = None)
 5. **Monitoring**: Use `ack_callback` to track ingestion progress
 6. **Choose the right API**: Use sync API for low-volume, async API for high-volume ingestion
 7. **Token refresh**: Tokens are automatically refreshed on stream creation and recovery
-
-## Disclaimer
-
-[Public Preview](https://docs.databricks.com/release-notes/release-types.html): This SDK is supported for production use cases and is available to all customers. Databricks is actively working on stabilizing the Zerobus Ingest SDK for Python. Minor version updates may include backwards-incompatible changes.
-
-We are keen to hear feedback from you on this SDK. Please [file issues](https://github.com/databricks/zerobus-sdk-py/issues), and we will address them.
