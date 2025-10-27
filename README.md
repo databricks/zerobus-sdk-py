@@ -514,10 +514,15 @@ class CustomHeadersProvider(HeadersProvider):
     Note: Currently, OAuth 2.0 Client Credentials (via create_stream())
     is the standard authentication method. Use this only if you have
     specific requirements for custom headers.
+    
+    IMPORTANT: Custom headers providers MUST include both:
+    - "authorization": "Bearer <token>" header for authentication
+    - "x-databricks-zerobus-table-name": "<table_name>" header for routing
     """
 
-    def __init__(self, token: str):
+    def __init__(self, token: str, table_name: str):
         self.token = token
+        self.table_name = table_name
 
     def get_headers(self):
         """
@@ -528,11 +533,15 @@ class CustomHeadersProvider(HeadersProvider):
         """
         return [
             ("authorization", f"Bearer {self.token}"),
-            ("x-custom-header", "custom-value"),
+            ("x-databricks-zerobus-table-name", self.table_name),
+            ("x-custom-header", "custom-value"),  # Optional: additional custom headers
         ]
 
 # Use the custom provider
-custom_provider = CustomHeadersProvider(token="your-token")
+custom_provider = CustomHeadersProvider(
+    token="your-token",
+    table_name=table_properties.table_name
+)
 stream = sdk.create_stream_with_headers_provider(
     custom_provider,
     table_properties
@@ -821,10 +830,15 @@ from zerobus.sdk.shared.headers_provider import HeadersProvider
 class MyCustomProvider(HeadersProvider):
     def get_headers(self):
         return [
-            ("authorization", "Bearer my-token"),
-            ("x-custom-header", "value"),
+            ("authorization", "Bearer my-token"),  # Required
+            ("x-databricks-zerobus-table-name", "catalog.schema.table"),  # Required
+            ("x-custom-header", "value"),  # Optional: additional custom headers
         ]
 ```
+
+**Important:** Custom headers providers MUST include both required headers:
+- `"authorization"`: Bearer token for authentication
+- `"x-databricks-zerobus-table-name"`: Fully qualified table name for routing
 
 Note: Most users should use `create_stream()` with OAuth credentials rather than implementing a custom provider.
 
