@@ -1,13 +1,13 @@
 """
 Asynchronous Ingestion Example
 
-This example demonstrates asynchronous record ingestion using Python's asyncio framework.
-The SDK manages buffering and flow control automatically, allowing for efficient concurrent
-operations with other async tasks in your application.
+This example demonstrates record ingestion using the asynchronous API with Python's asyncio framework.
 
 Use Case: Best for applications already using asyncio, async web frameworks (FastAPI, aiohttp),
-or when you need to integrate ingestion with other asynchronous operations. This approach
-allows non-blocking concurrent execution within an event loop.
+or when integrating ingestion with other asynchronous operations in an event loop.
+
+Note: Both sync and async APIs provide the same throughput and durability guarantees.
+Choose based on your application's architecture, not performance requirements.
 """
 
 import asyncio
@@ -27,8 +27,20 @@ logger = logging.getLogger(__name__)
 
 
 # Configuration - update these with your values
-SERVER_ENDPOINT = os.getenv("ZEROBUS_SERVER_ENDPOINT", "your-shard-id.zerobus.region.cloud.databricks.com")
-UNITY_CATALOG_ENDPOINT = os.getenv("DATABRICKS_WORKSPACE_URL", "https://your-workspace.cloud.databricks.com")
+# For AWS:
+SERVER_ENDPOINT = os.getenv(
+    "ZEROBUS_SERVER_ENDPOINT", "your-shard-id.zerobus.region.cloud.databricks.com"
+)
+UNITY_CATALOG_ENDPOINT = os.getenv(
+    "DATABRICKS_WORKSPACE_URL", "https://your-workspace.cloud.databricks.com"
+)
+# For Azure:
+# SERVER_ENDPOINT = os.getenv(
+#     "ZEROBUS_SERVER_ENDPOINT", "your-shard-id.zerobus.region.azuredatabricks.net"
+# )
+# UNITY_CATALOG_ENDPOINT = os.getenv(
+#     "DATABRICKS_WORKSPACE_URL", "https://your-workspace.azuredatabricks.net"
+# )
 TABLE_NAME = os.getenv("ZEROBUS_TABLE_NAME", "catalog.schema.table")
 
 # For OAuth authentication
