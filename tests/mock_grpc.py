@@ -471,7 +471,7 @@ def for_both_sdks(test_func):
         # Run for async SDK
         logging.info(f"\nRunning test '{test_func.__name__}' for Async SDK")
         async_sdk_manager = SdkManager(ZerobusSdkAsync)
-        with patch("zerobus.sdk.aio.zerobus_sdk.get_zerobus_token", return_value="mock_token"):
+        with patch("zerobus.sdk.shared.headers_provider.get_zerobus_token", return_value="mock_token"):
             await test_func(test_instance, async_sdk_manager, *args, **kwargs)
         logging.info(f"Test '{test_func.__name__}' PASSED for Async SDK")
 
@@ -482,7 +482,7 @@ def for_both_sdks(test_func):
         loop = asyncio.get_running_loop()
 
         def run_sync_test_in_isolation():
-            with patch("zerobus.sdk.sync.zerobus_sdk.get_zerobus_token", return_value="mock_token"):
+            with patch("zerobus.sdk.shared.headers_provider.get_zerobus_token", return_value="mock_token"):
                 asyncio.run(coro)
 
         await loop.run_in_executor(None, run_sync_test_in_isolation)

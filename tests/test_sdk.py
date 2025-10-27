@@ -51,7 +51,7 @@ class TestZerobusEphemeralStream(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("grpc.secure_channel", return_value=mock_channel),
-            patch("zerobus.sdk.sync.zerobus_sdk.get_zerobus_token", return_value="mock_token"),
+            patch("zerobus.sdk.shared.headers_provider.get_zerobus_token", return_value="mock_token"),
         ):
             sdk_handle = ZerobusSdk(SERVER_ENDPOINT, unity_catalog_url="https://test.unity.catalog.url")
             try:

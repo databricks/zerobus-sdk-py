@@ -12,6 +12,7 @@ from tests.mock_grpc import (InjectedRecordResponse, MockGrpcChannel,
                              SdkManager, for_both_sdks)
 from zerobus.sdk import (StreamConfigurationOptions, StreamState,
                          TableProperties, ZerobusException)
+from zerobus.sdk.shared.headers_provider import HeadersProvider
 
 SERVER_ENDPOINT = "SERVER_ENDPOINT"
 TABLE_NAME = "catalog.schema.test_table"
@@ -19,6 +20,31 @@ TABLE_NAME = "catalog.schema.test_table"
 
 def token_factory():
     return "TOKEN"
+
+
+class CustomHeadersProviderForTest(HeadersProvider):
+    """
+    Custom headers provider for testing that mimics default OAuth behavior.
+
+    This demonstrates that the custom headers provider API works correctly
+    when providing the same headers that the default OAuth provider would.
+    """
+
+    def __init__(self, token: str, table_name: str):
+        self.token = token
+        self.table_name = table_name
+
+    def get_headers(self):
+        """
+        Return headers matching the default OAuth provider format.
+
+        Returns:
+            List of (header_name, header_value) tuples
+        """
+        return [
+            ("authorization", f"Bearer {self.token}"),
+            ("x-databricks-zerobus-table-name", self.table_name),
+        ]
 
 
 class TestZerobusSdkBasic(unittest.IsolatedAsyncioTestCase):
@@ -426,6 +452,110 @@ class TestZerobusSdkBasic(unittest.IsolatedAsyncioTestCase):
             await stream.close()
 
         mock_grpc_stream.cancel()
+
+    async def test_create_stream_with_custom_headers_provider_async(self):
+        """Test creating async stream with custom headers provider that mimics default OAuth."""
+        from zerobus.sdk.aio import ZerobusSdk as ZerobusSdkAsync
+
+        calls_count = 0
+        mock_grpc_stream = None
+
+        def create_ephemeral_stream(generator, **kwargs):
+            nonlocal calls_count, mock_grpc_stream
+            calls_count += 1
+            from tests.mock_grpc import MockAsyncStream
+
+            mock_grpc_stream = MockAsyncStream(calls_count, generator)
+            mock_grpc_stream.inject_response(False, InjectedRecordResponse(0, timeout_ms=10))
+            return mock_grpc_stream
+
+        mock_channel = MockGrpcChannel()
+        mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
+
+        with patch("grpc.aio.secure_channel", return_value=mock_channel):
+            # Create custom headers provider that mimics default behavior
+            custom_provider = CustomHeadersProviderForTest(token="test_token", table_name=TABLE_NAME)
+
+            # Verify the headers match expected format
+            headers = custom_provider.get_headers()
+            self.assertEqual(len(headers), 2)
+            self.assertEqual(headers[0], ("authorization", "Bearer test_token"))
+            self.assertEqual(headers[1], ("x-databricks-zerobus-table-name", TABLE_NAME))
+
+            # Create SDK and stream using custom provider
+            sdk_instance = ZerobusSdkAsync(SERVER_ENDPOINT, unity_catalog_url="https://test.unity.catalog.url")
+            table_props = TableProperties(TABLE_NAME, test_row_pb2.AirQuality.DESCRIPTOR)
+
+            # Use create_stream_with_headers_provider instead of create_stream
+            stream = await sdk_instance.create_stream_with_headers_provider(custom_provider, table_props, self.options)
+
+            # Verify stream was created successfully
+            self.assertIsNotNone(stream)
+            self.assertEqual(stream.get_state(), StreamState.OPENED)
+
+            # Test basic ingestion with custom provider
+            ack = await stream.ingest_record(test_row_pb2.AirQuality(device_name="device", temp=17, humidity=42))
+            offset = await ack
+
+            self.assertEqual(offset, 0)
+
+            # Close stream
+            await stream.close()
+
+        if mock_grpc_stream:
+            mock_grpc_stream.cancel()
+
+    def test_create_stream_with_custom_headers_provider_sync(self):
+        """Test creating sync stream with custom headers provider that mimics default OAuth."""
+        from zerobus.sdk.sync import ZerobusSdk as ZerobusSdkSync
+
+        calls_count = 0
+        mock_grpc_stream = None
+
+        def create_ephemeral_stream(generator, **kwargs):
+            nonlocal calls_count, mock_grpc_stream
+            calls_count += 1
+            from tests.mock_grpc import MockSyncStream
+
+            mock_grpc_stream = MockSyncStream(calls_count, generator)
+            mock_grpc_stream.inject_response(False, InjectedRecordResponse(0, timeout_ms=10))
+            return mock_grpc_stream
+
+        mock_channel = MockGrpcChannel()
+        mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
+
+        with patch("grpc.secure_channel", return_value=mock_channel):
+            # Create custom headers provider that mimics default behavior
+            custom_provider = CustomHeadersProviderForTest(token="test_token", table_name=TABLE_NAME)
+
+            # Verify the headers match expected format
+            headers = custom_provider.get_headers()
+            self.assertEqual(len(headers), 2)
+            self.assertEqual(headers[0], ("authorization", "Bearer test_token"))
+            self.assertEqual(headers[1], ("x-databricks-zerobus-table-name", TABLE_NAME))
+
+            # Create SDK and stream using custom provider
+            sdk_instance = ZerobusSdkSync(SERVER_ENDPOINT, unity_catalog_url="https://test.unity.catalog.url")
+            table_props = TableProperties(TABLE_NAME, test_row_pb2.AirQuality.DESCRIPTOR)
+
+            # Use create_stream_with_headers_provider instead of create_stream
+            stream = sdk_instance.create_stream_with_headers_provider(custom_provider, table_props, self.options)
+
+            # Verify stream was created successfully
+            self.assertIsNotNone(stream)
+            self.assertEqual(stream.get_state(), StreamState.OPENED)
+
+            # Test basic ingestion with custom provider
+            ack = stream.ingest_record(test_row_pb2.AirQuality(device_name="device", temp=17, humidity=42))
+            offset = ack.wait_for_ack()
+
+            self.assertEqual(offset, 0)
+
+            # Close stream
+            stream.close()
+
+        if mock_grpc_stream:
+            mock_grpc_stream.cancel()
 
 
 if __name__ == "__main__":
