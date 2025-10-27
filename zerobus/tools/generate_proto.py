@@ -20,6 +20,8 @@ This script fetches table schema from Unity Catalog and generates a correspondin
     epilog = """
 Examples:
     # Generate proto file for a Unity Catalog table
+    # Note: For AWS, use https://your-workspace.cloud.databricks.com
+    #       For Azure, use https://your-workspace.azuredatabricks.net
     python generate_proto.py \\
         --uc-endpoint "https://your-workspace.cloud.databricks.com" \\
         --client-id "your-client-id" \\
@@ -53,7 +55,7 @@ Type mappings:
         "--uc-endpoint",
         type=str,
         required=True,
-        help="Unity Catalog endpoint URL (e.g., https://your-workspace.cloud.databricks.com)",
+        help="Unity Catalog endpoint URL (e.g., https://your-workspace.cloud.databricks.com for AWS, or https://your-workspace.azuredatabricks.net for Azure)",
     )
 
     parser.add_argument(

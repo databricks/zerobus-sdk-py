@@ -1,12 +1,12 @@
 """
 Synchronous Ingestion Example
 
-This example demonstrates blocking (synchronous) record ingestion where each record
-is waited for before proceeding to the next one. This approach provides the strongest
-durability guarantees but has lower throughput compared to asynchronous ingestion.
+This example demonstrates record ingestion using the synchronous API.
 
-Use Case: Best for low-volume ingestion where durability is critical and you need
-immediate confirmation of each write.
+Use Case: Best for applications that don't use asyncio or prefer blocking I/O patterns.
+
+Note: Both sync and async APIs provide the same throughput and durability guarantees.
+Choose based on your application's architecture, not performance requirements.
 """
 
 import logging
@@ -25,8 +25,16 @@ logger = logging.getLogger(__name__)
 
 
 # Configuration - update these with your values
+# For AWS:
 SERVER_ENDPOINT = os.getenv("ZEROBUS_SERVER_ENDPOINT", "your-shard-id.zerobus.region.cloud.databricks.com")
 UNITY_CATALOG_ENDPOINT = os.getenv("DATABRICKS_WORKSPACE_URL", "https://your-workspace.cloud.databricks.com")
+# For Azure:
+# SERVER_ENDPOINT = os.getenv(
+#     "ZEROBUS_SERVER_ENDPOINT", "your-shard-id.zerobus.region.azuredatabricks.net"
+# )
+# UNITY_CATALOG_ENDPOINT = os.getenv(
+#     "DATABRICKS_WORKSPACE_URL", "https://your-workspace.azuredatabricks.net"
+# )
 TABLE_NAME = os.getenv("ZEROBUS_TABLE_NAME", "catalog.schema.table")
 
 # For OAuth authentication

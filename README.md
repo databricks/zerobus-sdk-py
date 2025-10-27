@@ -69,6 +69,8 @@ https://<databricks-instance>.cloud.databricks.com/o=<workspace-id>
 - **Workspace URL**: The part before `/o=` → `https://<databricks-instance>.cloud.databricks.com`
 - **Workspace ID**: The part after `/o=` → `<workspace-id>`
 
+> **Note:** The examples above show AWS endpoints (`.cloud.databricks.com`). For Azure deployments, the workspace URL will be `https://<databricks-instance>.azuredatabricks.net`.
+
 Example:
 - Full URL: `https://dbc-a1b2c3d4-e5f6.cloud.databricks.com/o=1234567890123456`
 - Workspace URL: `https://dbc-a1b2c3d4-e5f6.cloud.databricks.com`
@@ -119,7 +121,7 @@ GRANT SELECT, MODIFY ON TABLE <catalog_name>.default.air_quality TO `<service-pr
 Install the latest stable version using pip:
 
 ```bash
-pip install databricks-zerobus-ingest
+pip install databricks-zerobus-ingest-sdk
 ```
 
 #### From Source
@@ -175,7 +177,7 @@ python -m zerobus.tools.generate_proto \
 ```
 
 **Parameters:**
-- `--uc-endpoint`: Your workspace URL (e.g., `https://dbc-a1b2c3d4-e5f6.cloud.databricks.com`)
+- `--uc-endpoint`: Your workspace URL (e.g., `https://dbc-a1b2c3d4-e5f6.cloud.databricks.com` for AWS, or `https://dbc-a1b2c3d4-e5f6.azuredatabricks.net` for Azure)
 - `--client-id`: Service principal application ID
 - `--client-secret`: Service principal secret
 - `--table`: Fully qualified table name (catalog.schema.table)
@@ -253,8 +255,14 @@ logging.basicConfig(
 )
 
 # Configuration
+
+# For AWS:
 server_endpoint = "1234567890123456.zerobus.us-west-2.cloud.databricks.com"
 workspace_url = "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com"
+# For Azure:
+# server_endpoint = "1234567890123456.zerobus.us-west-2.azuredatabricks.net"
+# workspace_url = "https://dbc-a1b2c3d4-e5f6.azuredatabricks.net"
+
 table_name = "main.default.air_quality"
 client_id = "your-service-principal-application-id"
 client_secret = "your-service-principal-secret"
@@ -285,7 +293,7 @@ try:
         )
 
         ack = stream.ingest_record(record)
-        ack.wait_for_ack()  # Wait for durability
+        ack.wait_for_ack()  # Optional: Wait for durability confirmation
 
         print(f"Ingested record {i + 1}")
 
@@ -311,8 +319,15 @@ logging.basicConfig(
 
 async def main():
     # Configuration
+
+    # For AWS:
     server_endpoint = "1234567890123456.zerobus.us-west-2.cloud.databricks.com"
     workspace_url = "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com"
+
+    # For Azure:
+    # server_endpoint = "1234567890123456.zerobus.us-west-2.azuredatabricks.net"
+    # workspace_url = "https://dbc-a1b2c3d4-e5f6.azuredatabricks.net"
+
     table_name = "main.default.air_quality"
     client_id = "your-service-principal-application-id"
     client_secret = "your-service-principal-secret"
@@ -343,7 +358,7 @@ async def main():
             )
 
             future = await stream.ingest_record(record)
-            await future  # Wait for durability
+            await future  # Optional: Wait for durability confirmation
 
             print(f"Ingested record {i + 1}")
 
@@ -374,7 +389,7 @@ To run the examples, set your credentials as environment variables and execute t
 
 ### Blocking Ingestion
 
-Ingest records synchronously, waiting for each record to be acknowledged:
+Ingest records using the synchronous API:
 
 ```python
 import logging
@@ -402,14 +417,14 @@ try:
         )
 
         ack = stream.ingest_record(record)
-        ack.wait_for_ack()  # Wait for durability
+        ack.wait_for_ack()  # Optional: Wait for durability confirmation
 finally:
     stream.close()
 ```
 
 ### Non-Blocking Ingestion
 
-Ingest records asynchronously for maximum throughput:
+Ingest records using the asynchronous API:
 
 ```python
 import asyncio
@@ -537,7 +552,7 @@ sdk = ZerobusSdk(server_endpoint, unity_catalog_endpoint)
 ```
 
 **Constructor Parameters:**
-- `server_endpoint` (str) - The Zerobus gRPC endpoint (e.g., `<workspace-id>.zerobus.region.cloud.databricks.com`)
+- `server_endpoint` (str) - The Zerobus gRPC endpoint (e.g., `<workspace-id>.zerobus.<region>.cloud.databricks.com` for AWS, or `<workspace-id>.zerobus.<region>.azuredatabricks.net` for Azure)
 - `unity_catalog_endpoint` (str) - The Unity Catalog endpoint (your workspace URL)
 
 **Methods:**
