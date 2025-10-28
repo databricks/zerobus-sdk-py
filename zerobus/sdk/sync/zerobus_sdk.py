@@ -12,8 +12,9 @@ from google.protobuf.descriptor_pb2 import DescriptorProto
 from ..shared import (NOT_RETRIABLE_GRPC_CODES, NonRetriableException,
                       StreamConfigurationOptions, StreamState, TableProperties,
                       ZerobusException, _StreamFailureInfo, _StreamFailureType,
-                      get_zerobus_token, log_and_get_exception,
-                      zerobus_service_pb2, zerobus_service_pb2_grpc)
+                      log_and_get_exception, zerobus_service_pb2,
+                      zerobus_service_pb2_grpc)
+from ..shared.headers_provider import HeadersProvider, OAuthHeadersProvider
 
 logger = logging.getLogger("zerobus_sdk")
 
@@ -114,10 +115,7 @@ class ZerobusStream:
 
     Args:
         stub (zerobus_service_pb2_grpc.ZerobusStub): The gRPC stub for the service.
-        client_id (str): The client ID.
-        client_secret (str): The client secret.
-        unity_catalog_url (str): The URL of the Unity Catalog endpoint.
-        workspace_id (str): The workspace ID.
+        headers_provider (HeadersProvider): Provider for headers.
         table_properties (TableProperties): The properties of the target table.
         options (StreamConfigurationOptions): Configuration options for the stream.
         grpc_channel (grpc.Channel): The underlying gRPC channel.
@@ -126,19 +124,13 @@ class ZerobusStream:
     def __init__(
         self,
         stub: zerobus_service_pb2_grpc.ZerobusStub,
-        client_id: str,
-        client_secret: str,
-        unity_catalog_url: str,
-        workspace_id: str,
+        headers_provider: HeadersProvider,
         table_properties: TableProperties,
         options: StreamConfigurationOptions,
         grpc_channel: grpc.Channel,
     ):
         self.__stub = stub
-        self._client_id = client_id
-        self._client_secret = client_secret
-        self._unity_catalog_url = unity_catalog_url
-        self._workspace_id = workspace_id
+        self._headers_provider = headers_provider
         self._table_properties = table_properties
         self._options = options
 
@@ -217,13 +209,7 @@ class ZerobusStream:
             self.grpc_channel.unsubscribe(on_state_change)
 
     def __create_stream(self):
-        headers = [
-            ("x-databricks-zerobus-table-name", self._table_properties.table_name),
-            (
-                "authorization",
-                f"Bearer {get_zerobus_token(self._table_properties.table_name, self._workspace_id, self._unity_catalog_url, self._client_id, self._client_secret)}",
-            ),
-        ]
+        headers = self._headers_provider.get_headers()
 
         with self.__state_changed:
             if self.__state == StreamState.OPENED:
@@ -818,6 +804,13 @@ class ZerobusSdk:
     """
 
     def __init__(self, host: str, unity_catalog_url: str):
+        """
+        Initialize ZerobusSdk with standard OAuth authentication.
+
+        Args:
+            host: The hostname or IP address of the Zerobus service.
+            unity_catalog_url: The URL of the Unity Catalog endpoint.
+        """
         self.__host = host
         self.__unity_catalog_url = unity_catalog_url
         self.__workspace_id = host.split(".")[0]
@@ -843,6 +836,28 @@ class ZerobusSdk:
         Returns:
             ZerobusStream: An initialized and active stream instance.
         """
+        headers_provider = OAuthHeadersProvider(
+            self.__workspace_id, self.__unity_catalog_url, table_properties.table_name, client_id, client_secret
+        )
+        return self.create_stream_with_headers_provider(headers_provider, table_properties, options)
+
+    def create_stream_with_headers_provider(
+        self,
+        headers_provider: HeadersProvider,
+        table_properties: TableProperties,
+        options: StreamConfigurationOptions = StreamConfigurationOptions(),
+    ) -> ZerobusStream:
+        """
+        Creates, initializes, and returns a new ingestion stream using a custom headers provider.
+
+        Args:
+            headers_provider: The headers provider.
+            table_properties: The properties of the target table.
+            options: The options for the stream.
+
+        Returns:
+            ZerobusStream: An initialized and active stream instance.
+        """
         channel = grpc.secure_channel(
             self.__host,
             grpc.ssl_channel_credentials(),
@@ -852,10 +867,7 @@ class ZerobusSdk:
         stub = zerobus_service_pb2_grpc.ZerobusStub(channel)
         stream = ZerobusStream(
             stub,
-            client_id,
-            client_secret,
-            self.__unity_catalog_url,
-            self.__workspace_id,
+            headers_provider,
             table_properties,
             options,
             channel,
@@ -883,11 +895,8 @@ class ZerobusSdk:
         if old_stream_state != StreamState.CLOSED and old_stream_state != StreamState.FAILED:
             raise ZerobusException("Stream is not closed. Cannot create new stream.")
 
-        new_stream = self.create_stream(
-            old_stream._client_id,
-            old_stream._client_secret,
-            old_stream._table_properties,
-            old_stream._options,
+        new_stream = self.create_stream_with_headers_provider(
+            old_stream._headers_provider, old_stream._table_properties, old_stream._options
         )
 
         unacked_records = old_stream.get_unacked_records()

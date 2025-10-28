@@ -5,6 +5,10 @@ This example demonstrates record ingestion using the synchronous API.
 
 Use Case: Best for applications that don't use asyncio or prefer blocking I/O patterns.
 
+Authentication:
+  - Uses OAuth 2.0 Client Credentials (standard method)
+  - Includes example of custom headers provider for advanced use cases
+
 Note: Both sync and async APIs provide the same throughput and durability guarantees.
 Choose based on your application's architecture, not performance requirements.
 """
@@ -17,6 +21,7 @@ import time
 import record_pb2
 
 from zerobus.sdk.shared import StreamConfigurationOptions, TableProperties
+from zerobus.sdk.shared.headers_provider import HeadersProvider
 from zerobus.sdk.sync import ZerobusSdk
 
 # Configure logging
@@ -52,6 +57,31 @@ def create_sample_record(index):
     You can customize this to create records with different data patterns.
     """
     return record_pb2.AirQuality(device_name=f"sensor-{index % 10}", temp=20 + (index % 15), humidity=50 + (index % 40))
+
+
+class CustomHeadersProvider(HeadersProvider):
+    """
+    Example custom headers provider for advanced use cases.
+
+    Note: OAuth 2.0 Client Credentials (via create_stream()) is the standard
+    authentication method. Use this only if you have specific requirements
+    for custom headers (e.g., custom metadata, existing token management, etc.).
+    """
+
+    def __init__(self, custom_token: str):
+        self.custom_token = custom_token
+
+    def get_headers(self):
+        """
+        Return custom headers for gRPC metadata.
+
+        Returns:
+            List of (header_name, header_value) tuples
+        """
+        return [
+            ("authorization", f"Bearer {self.custom_token}"),
+            ("x-custom-header", "custom-value"),
+        ]
 
 
 def main():
@@ -93,8 +123,19 @@ def main():
         )
         logger.info("✓ Stream configuration created")
 
-        # Step 4: Create a stream
+        # Step 4: Create a stream with OAuth 2.0 authentication
+        #
+        # Standard method: OAuth 2.0 Client Credentials
+        # The SDK automatically includes these headers:
+        #   - "authorization": "Bearer <oauth_token>" (fetched via OAuth 2.0 Client Credentials flow)
+        #   - "x-databricks-zerobus-table-name": "<table_name>"
         stream = sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options)
+
+        # Advanced: Custom headers provider (for special use cases only)
+        # Uncomment to use custom headers instead of OAuth:
+        # custom_provider = CustomHeadersProvider(custom_token="your-custom-token")
+        # stream = sdk.create_stream_with_headers_provider(custom_provider, table_properties, options)
+
         logger.info(f"✓ Stream created: {stream.stream_id}")
 
         # Step 5: Ingest records synchronously
