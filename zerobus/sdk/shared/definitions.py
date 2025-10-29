@@ -22,6 +22,13 @@ NOT_RETRIABLE_GRPC_CODES = {
 STREAM_LIFETIME_CODE = "Error code 6002"
 
 
+class RecordType(Enum):
+    """Type of records to ingest into the stream."""
+
+    PROTO = 1  # Protobuf records
+    JSON = 2  # JSON records
+
+
 def log_and_get_exception(e):
     if e.code() in NOT_RETRIABLE_GRPC_CODES:
         logger.error(f"Non-retriable gRPC error happened in receiving records: {str(e)}")
@@ -42,7 +49,7 @@ class TableProperties:
     Table properties for the stream.
     """
 
-    def __init__(self, table_name: str, descriptor_proto: Descriptor):
+    def __init__(self, table_name: str, descriptor_proto: Optional[Descriptor] = None):
         self.table_name = table_name
         self.descriptor_proto = descriptor_proto
 
@@ -79,6 +86,9 @@ class StreamConfigurationOptions:
 
         # Callback to be called when a record acknowledgement is received
         self.ack_callback: Optional[Callable[[IngestRecordResponse], None]] = None
+
+        # Type of records to ingest into the stream (default: PROTO for backwards compatibility)
+        self.record_type: RecordType = RecordType.PROTO
 
         # Dynamically update attributes based on kwargs
         for key, value in kwargs.items():

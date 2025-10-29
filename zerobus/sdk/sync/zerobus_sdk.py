@@ -1,19 +1,21 @@
+import json
 import logging
 import queue
 import threading
 import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, Iterator, Optional
+from typing import Callable, Iterator, Optional, Union
 
 import grpc
 from google.protobuf.descriptor_pb2 import DescriptorProto
+from google.protobuf.message import Message
 
 from ..shared import (NOT_RETRIABLE_GRPC_CODES, NonRetriableException,
-                      StreamConfigurationOptions, StreamState, TableProperties,
-                      ZerobusException, _StreamFailureInfo, _StreamFailureType,
-                      log_and_get_exception, zerobus_service_pb2,
-                      zerobus_service_pb2_grpc)
+                      RecordType, StreamConfigurationOptions, StreamState,
+                      TableProperties, ZerobusException, _StreamFailureInfo,
+                      _StreamFailureType, log_and_get_exception,
+                      zerobus_service_pb2, zerobus_service_pb2_grpc)
 from ..shared.headers_provider import HeadersProvider, OAuthHeadersProvider
 
 logger = logging.getLogger("zerobus_sdk")
@@ -432,13 +434,18 @@ class ZerobusStream:
         try:
             # Firstly, send the create stream request
             logger.info("Sending CreateIngestStreamRequest to gRPC stream")
-            yield zerobus_service_pb2.EphemeralStreamRequest(
-                create_stream=zerobus_service_pb2.CreateIngestStreamRequest(
-                    table_name=self._table_properties.table_name.encode("utf-8"),
-                    descriptor_proto=self._get_descriptor_bytes(self._table_properties.descriptor_proto),
-                    record_type=zerobus_service_pb2.PROTO,
-                )
+            create_stream_request = zerobus_service_pb2.CreateIngestStreamRequest(
+                table_name=self._table_properties.table_name.encode("utf-8"),
+                record_type=self._options.record_type.value,
             )
+
+            # Only include descriptor for PROTO streams
+            if self._options.record_type == RecordType.PROTO:
+                create_stream_request.descriptor_proto = self._get_descriptor_bytes(
+                    self._table_properties.descriptor_proto
+                )
+
+            yield zerobus_service_pb2.EphemeralStreamRequest(create_stream=create_stream_request)
             self.__wait_for_stream_to_finish_initialization()
 
             # Then, send previous unacked requests
@@ -464,11 +471,13 @@ class ZerobusStream:
                             )
                             self.__pending_futures.pop(old_offset_id)
 
-                    yield zerobus_service_pb2.EphemeralStreamRequest(
-                        ingest_record=zerobus_service_pb2.IngestRecordRequest(
-                            offset_id=offset_id, proto_encoded_record=serialized_record
-                        )
-                    )
+                    ingest_request = zerobus_service_pb2.IngestRecordRequest(offset_id=offset_id)
+                    if self._options.record_type == RecordType.PROTO:
+                        ingest_request.proto_encoded_record = serialized_record
+                    elif self._options.record_type == RecordType.JSON:
+                        ingest_request.json_record = serialized_record.decode("utf-8")
+
+                    yield zerobus_service_pb2.EphemeralStreamRequest(ingest_record=ingest_request)
             except Exception as e:
                 raise ZerobusException("Failed to resend unacked records after stream recovery: " + str(e))
 
@@ -495,11 +504,13 @@ class ZerobusStream:
                 if self.__state == StreamState.FAILED or self.__state == StreamState.RECOVERING:
                     return
 
-                yield zerobus_service_pb2.EphemeralStreamRequest(
-                    ingest_record=zerobus_service_pb2.IngestRecordRequest(
-                        offset_id=offset_id, proto_encoded_record=serialized_record
-                    )
-                )
+                ingest_request = zerobus_service_pb2.IngestRecordRequest(offset_id=offset_id)
+                if self._options.record_type == RecordType.PROTO:
+                    ingest_request.proto_encoded_record = serialized_record
+                elif self._options.record_type == RecordType.JSON:
+                    ingest_request.json_record = serialized_record.decode("utf-8")
+
+                yield zerobus_service_pb2.EphemeralStreamRequest(ingest_record=ingest_request)
                 offset_id += 1
 
         except grpc.RpcError as e:
@@ -665,7 +676,7 @@ class ZerobusStream:
         with self.__lock:
             return (record[0] for record in self.__unacked_records)
 
-    def ingest_record(self, record) -> RecordAcknowledgment:
+    def ingest_record(self, record: Union[Message, dict]) -> RecordAcknowledgment:
         """
         Submits a single record for ingestion into the stream.
 
@@ -673,15 +684,37 @@ class ZerobusStream:
         waiting until there is capacity.
 
         Args:
-            record: The Protobuf message object to be ingested.
+            record: Either a Protobuf Message object or a dict (for JSON records).
+                   Type must match the stream's configured record_type.
 
         Returns:
             RecordAcknowledgment: An object to wait on for the server's acknowledgment.
 
         Raises:
+            ValueError: If record type doesn't match stream configuration.
             ZerobusException: If the stream is not in a valid state for ingestion.
         """
-        serialized_record = record.SerializeToString()
+        # Validate record type and serialize appropriately
+        if self._options.record_type == RecordType.PROTO:
+            if not isinstance(record, Message):
+                raise ValueError(
+                    f"Stream is configured for PROTO records, but received {type(record).__name__}. "
+                    "Pass a Protobuf Message object."
+                )
+            serialized_record = record.SerializeToString()
+
+        elif self._options.record_type == RecordType.JSON:
+            if not isinstance(record, dict):
+                raise ValueError(
+                    f"Stream is configured for JSON records, but received {type(record).__name__}. "
+                    "Pass a dict object."
+                )
+            # Serialize dict to JSON string and encode to bytes
+            serialized_record = json.dumps(record).encode("utf-8")
+
+        else:
+            raise ValueError(f"Unsupported record type: {self._options.record_type}")
+
         with self.__state_changed:
             if self.__state == StreamState.FLUSHING:
                 self.__state_changed.wait_for(lambda: self.__state != StreamState.FLUSHING)
@@ -857,7 +890,18 @@ class ZerobusSdk:
 
         Returns:
             ZerobusStream: An initialized and active stream instance.
+
+        Raises:
+            ValueError: If record_type is PROTO but descriptor_proto is not provided.
         """
+        # Validate record_type and descriptor compatibility
+        if options.record_type == RecordType.PROTO:
+            if table_properties.descriptor_proto is None:
+                raise ValueError("descriptor_proto is required in TableProperties when record_type is PROTO")
+        elif options.record_type == RecordType.JSON:
+            if table_properties.descriptor_proto is not None:
+                logger.warning("descriptor_proto provided for JSON stream will be ignored")
+
         channel = grpc.secure_channel(
             self.__host,
             grpc.ssl_channel_credentials(),
