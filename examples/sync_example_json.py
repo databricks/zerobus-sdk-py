@@ -1,10 +1,12 @@
 """
-Asynchronous Ingestion Example
+Synchronous Ingestion Example - Explicit JSON Mode
 
-This example demonstrates record ingestion using the asynchronous API with Python's asyncio framework.
+This example demonstrates record ingestion using the synchronous API with explicit JSON serialization.
 
-Use Case: Best for applications already using asyncio, async web frameworks (FastAPI, aiohttp),
-or when integrating ingestion with other asynchronous operations in an event loop.
+Record Type Mode: EXPLICIT JSON
+  - Records are sent as JSON-encoded strings
+  - Uses RecordType.JSON to explicitly specify JSON serialization
+  - Best for dynamic schemas or when working with JSON data
 
 Authentication:
   - Uses OAuth 2.0 Client Credentials (standard method)
@@ -14,17 +16,14 @@ Note: Both sync and async APIs provide the same throughput and durability guaran
 Choose based on your application's architecture, not performance requirements.
 """
 
-import asyncio
+import json
 import logging
 import os
 import time
 
-# Import the generated protobuf module
-import record_pb2
-
-from zerobus.sdk.aio import ZerobusSdk
-from zerobus.sdk.shared import StreamConfigurationOptions, TableProperties
+from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
 from zerobus.sdk.shared.headers_provider import HeadersProvider
+from zerobus.sdk.sync import ZerobusSdk
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -49,16 +48,21 @@ CLIENT_ID = os.getenv("DATABRICKS_CLIENT_ID", "your-oauth-client-id")
 CLIENT_SECRET = os.getenv("DATABRICKS_CLIENT_SECRET", "your-oauth-client-secret")
 
 # Number of records to ingest
-NUM_RECORDS = 1000
+NUM_RECORDS = 100
 
 
-def create_sample_record(index):
+def create_sample_json_record(index):
     """
-    Creates a sample AirQuality record.
+    Creates a sample AirQuality record as a JSON string.
 
-    You can customize this to create records with different data patterns.
+    With explicit JSON mode, records are plain JSON strings that match your schema.
     """
-    return record_pb2.AirQuality(device_name=f"sensor-{index % 10}", temp=20 + (index % 15), humidity=50 + (index % 40))
+    record_dict = {
+        "device_name": f"sensor-{index % 10}",
+        "temp": 20 + (index % 15),
+        "humidity": 50 + (index % 40)
+    }
+    return json.dumps(record_dict)
 
 
 class CustomHeadersProvider(HeadersProvider):
@@ -86,26 +90,8 @@ class CustomHeadersProvider(HeadersProvider):
         ]
 
 
-def create_ack_callback():
-    """
-    Creates an acknowledgment callback that logs progress.
-
-    The callback is invoked by the SDK whenever records are acknowledged by the server.
-    """
-    ack_count = [0]  # Use list to maintain state in closure
-
-    def callback(response):
-        offset = response.durability_ack_up_to_offset
-        ack_count[0] += 1
-        # Log every 100 acknowledgments
-        if ack_count[0] % 100 == 0:
-            logger.info(f"  Acknowledged up to offset: {offset} (batch #{ack_count[0]})")
-
-    return callback
-
-
-async def main():
-    print("Starting asynchronous ingestion example...")
+def main():
+    print("Starting synchronous ingestion example (Explicit JSON Mode)...")
     print("=" * 60)
 
     # Check if credentials are configured
@@ -129,17 +115,20 @@ async def main():
         sdk = ZerobusSdk(SERVER_ENDPOINT, UNITY_CATALOG_ENDPOINT)
         logger.info("✓ SDK initialized")
 
-        # Step 2: Configure stream options with ack callback
+        # Step 2: Define table properties with explicit JSON record type
+        # Note: No protobuf descriptor needed for JSON mode
+        table_properties = TableProperties(TABLE_NAME, record_type=RecordType.JSON)
+        logger.info(f"✓ Table properties configured for: {TABLE_NAME} (JSON mode)")
+
+        # Step 3: Create stream configuration (optional)
         options = StreamConfigurationOptions(
-            max_inflight_records=10_000,  # Allow 10k records in flight
-            recovery=True,  # Enable automatic recovery
-            ack_callback=create_ack_callback(),  # Track acknowledgments
+            max_inflight_records=1000,
+            recovery=True,
+            recovery_timeout_ms=15000,
+            recovery_backoff_ms=2000,
+            recovery_retries=3,
         )
         logger.info("✓ Stream configuration created")
-
-        # Step 3: Define table properties
-        table_properties = TableProperties(TABLE_NAME, record_pb2.AirQuality.DESCRIPTOR)
-        logger.info(f"✓ Table properties configured for: {TABLE_NAME}")
 
         # Step 4: Create a stream with OAuth 2.0 authentication
         #
@@ -147,73 +136,64 @@ async def main():
         # The SDK automatically includes these headers:
         #   - "authorization": "Bearer <oauth_token>" (fetched via OAuth 2.0 Client Credentials flow)
         #   - "x-databricks-zerobus-table-name": "<table_name>"
-        stream = await sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options)
+        stream = sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options)
 
         # Advanced: Custom headers provider (for special use cases only)
         # Uncomment to use custom headers instead of OAuth:
         # custom_provider = CustomHeadersProvider(custom_token="your-custom-token")
-        # stream = await sdk.create_stream_with_headers_provider(custom_provider, table_properties, options)
+        # stream = sdk.create_stream_with_headers_provider(custom_provider, table_properties, options)
 
         logger.info(f"✓ Stream created: {stream.stream_id}")
 
-        # Step 5: Ingest records asynchronously
-        logger.info(f"\nIngesting {NUM_RECORDS} records (non-blocking mode)...")
+        # Step 5: Ingest JSON records synchronously
+        logger.info(f"\nIngesting {NUM_RECORDS} JSON records (blocking mode)...")
         start_time = time.time()
+        success_count = 0
 
         try:
-            # Store futures for later waiting
-            futures = []
-
             for i in range(NUM_RECORDS):
-                # Create a record with varying data
-                record = create_sample_record(i)
+                # Create a JSON record (as a string)
+                json_record = create_sample_json_record(i)
 
-                # Ingest record asynchronously
-                future = await stream.ingest_record(record)
-                futures.append(future)
+                # Ingest and wait for acknowledgment
+                ack = stream.ingest_record(json_record)
+
+                # Wait for record to be durably written
+                ack.wait_for_ack()
+
+                success_count += 1
 
                 # Progress indicator
-                if (i + 1) % 100 == 0:
-                    logger.info(f"  Submitted {i + 1} records")
-
-            submit_end_time = time.time()
-            submit_duration = submit_end_time - start_time
-            logger.info(f"\n✓ All records submitted in {submit_duration:.2f} seconds")
-
-            # Step 6: Flush and wait for all records to be durably written
-            logger.info("\nFlushing stream and waiting for durability...")
-            await stream.flush()
-            logger.info("✓ Stream flushed")
-
-            # Optionally wait for all individual futures
-            logger.info("Waiting for all records to be acknowledged...")
-            await asyncio.gather(*futures)
+                if (i + 1) % 10 == 0:
+                    logger.info(f"  Ingested {i + 1} records")
 
             end_time = time.time()
-            total_duration = end_time - start_time
-            records_per_second = NUM_RECORDS / total_duration
-            avg_latency_ms = (total_duration * 1000.0) / NUM_RECORDS
+            duration_seconds = end_time - start_time
+            records_per_second = NUM_RECORDS / duration_seconds
 
-            logger.info("✓ All records durably written")
+            # Step 6: Flush and close the stream
+            logger.info("\nFlushing stream...")
+            stream.flush()
+            logger.info("✓ Stream flushed")
 
-            # Step 7: Close the stream
-            await stream.close()
+            stream.close()
             logger.info("✓ Stream closed")
 
             # Print summary
             print("\n" + "=" * 60)
             print("Ingestion Summary:")
             print(f"  Total records: {NUM_RECORDS}")
-            print(f"  Submit time: {submit_duration:.2f} seconds")
-            print(f"  Total time: {total_duration:.2f} seconds")
+            print(f"  Successful: {success_count}")
+            print(f"  Failed: {NUM_RECORDS - success_count}")
+            print(f"  Duration: {duration_seconds:.2f} seconds")
             print(f"  Throughput: {records_per_second:.2f} records/sec")
-            print(f"  Average latency: {avg_latency_ms:.2f} ms/record")
             print(f"  Stream state: {stream.get_state()}")
+            print("  Record type: JSON (explicit)")
             print("=" * 60)
 
         except Exception as e:
             logger.error(f"\n✗ Error during ingestion: {e}")
-            await stream.close()
+            stream.close()
             raise
 
     except Exception as e:
@@ -222,4 +202,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
