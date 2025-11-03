@@ -41,14 +41,12 @@ export ZEROBUS_TABLE_NAME="catalog.schema.table"
 
 ```bash
 # Synchronous examples (blocking I/O)
-python examples/sync_example_proto_implicit.py     # Default: implicit protobuf
-python examples/sync_example_proto_explicit.py     # Explicit protobuf serialization
-python examples/sync_example_json.py               # JSON mode
+python examples/sync_example_proto.py     # Protobuf
+python examples/sync_example_json.py      # JSON
 
 # Asynchronous examples (non-blocking I/O)
-python examples/async_example_proto_implicit.py    # Default: implicit protobuf
-python examples/async_example_proto_explicit.py    # Explicit protobuf serialization
-python examples/async_example_json.py              # JSON mode
+python examples/async_example_proto.py    # Protobuf
+python examples/async_example_json.py     # JSON
 ```
 
 ## Examples Overview
@@ -57,22 +55,17 @@ python examples/async_example_json.py              # JSON mode
 
 The SDK supports two serialization formats:
 
-#### Protocol Buffers (Default)
-**Files:** `sync_example_proto_implicit.py`, `async_example_proto_implicit.py`, `sync_example_proto_explicit.py`, `async_example_proto_explicit.py`
+#### Protocol Buffers
+**Files:** `sync_example_proto.py`, `async_example_proto.py`
 
-More efficient over the wire. Pass protobuf objects or pre-serialized bytes to the SDK.
+More efficient over the wire. Pass protobuf message objects to the SDK.
 
 ```python
-# Option 1: Pass protobuf object (implicit - SDK serializes for you)
+# Create and ingest protobuf record
 record = record_pb2.AirQuality(device_name="sensor-1", temp=25, humidity=60)
 table_properties = TableProperties(TABLE_NAME, record_pb2.AirQuality.DESCRIPTOR)
-ack = stream.ingest_record(record)
-
-# Option 2: Pre-serialize yourself (explicit)
-serialized = record.SerializeToString()
-table_properties = TableProperties(TABLE_NAME, record_pb2.AirQuality.DESCRIPTOR)
 options = StreamConfigurationOptions(record_type=RecordType.PROTO)
-ack = stream.ingest_record(serialized)
+ack = stream.ingest_record(record)
 ```
 
 #### JSON
@@ -81,10 +74,8 @@ ack = stream.ingest_record(serialized)
 Good for getting started. Send records as JSON-encoded strings. No protobuf schema required.
 
 ```python
-# Create JSON string
+# Create and ingest JSON record
 json_record = json.dumps({"device_name": "sensor-1", "temp": 25, "humidity": 60})
-
-# Configure for JSON mode
 table_properties = TableProperties(TABLE_NAME)
 options = StreamConfigurationOptions(record_type=RecordType.JSON)
 ack = stream.ingest_record(json_record)
