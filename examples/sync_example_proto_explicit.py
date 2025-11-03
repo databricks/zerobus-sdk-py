@@ -23,7 +23,8 @@ import time
 # Import the generated protobuf module
 import record_pb2
 
-from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
+from zerobus.sdk.shared import (RecordType, StreamConfigurationOptions,
+                                TableProperties)
 from zerobus.sdk.shared.headers_provider import HeadersProvider
 from zerobus.sdk.sync import ZerobusSdk
 
@@ -60,9 +61,7 @@ def create_sample_record(index):
     With explicit protobuf mode, you serialize the record yourself before passing it to the SDK.
     """
     record = record_pb2.AirQuality(
-        device_name=f"sensor-{index % 10}",
-        temp=20 + (index % 15),
-        humidity=50 + (index % 40)
+        device_name=f"sensor-{index % 10}", temp=20 + (index % 15), humidity=50 + (index % 40)
     )
     # Explicitly serialize to bytes
     return record.SerializeToString()
@@ -118,17 +117,14 @@ def main():
         sdk = ZerobusSdk(SERVER_ENDPOINT, UNITY_CATALOG_ENDPOINT)
         logger.info("✓ SDK initialized")
 
-        # Step 2: Define table properties with explicit protobuf record type
-        # The descriptor is still needed for schema information
-        table_properties = TableProperties(
-            TABLE_NAME,
-            record_pb2.AirQuality.DESCRIPTOR,
-            record_type=RecordType.PROTOBUF
-        )
+        # Step 2: Define table properties
+        # The descriptor is needed for schema information
+        table_properties = TableProperties(TABLE_NAME, record_pb2.AirQuality.DESCRIPTOR)
         logger.info(f"✓ Table properties configured for: {TABLE_NAME} (Explicit Protobuf mode)")
 
-        # Step 3: Create stream configuration (optional)
+        # Step 3: Create stream configuration with explicit protobuf record type
         options = StreamConfigurationOptions(
+            record_type=RecordType.PROTO,
             max_inflight_records=1000,
             recovery=True,
             recovery_timeout_ms=15000,

@@ -53,56 +53,40 @@ python examples/async_example_json.py              # JSON mode
 
 ## Examples Overview
 
-### Record Type Modes
+### Serialization Formats
 
-The SDK supports three ways to serialize records:
+The SDK supports two serialization formats:
 
-#### 1. Implicit Protobuf (Default, Recommended)
-**Files:** `sync_example_proto_implicit.py`, `async_example_proto_implicit.py`
+#### Protocol Buffers (Default)
+**Files:** `sync_example_proto_implicit.py`, `async_example_proto_implicit.py`, `sync_example_proto_explicit.py`, `async_example_proto_explicit.py`
 
-- Pass protobuf objects directly to the SDK
-- SDK handles serialization automatically
-- Simplest approach for protobuf schemas
-- **Best for:** Most use cases with protobuf schemas
+More efficient over the wire. Pass protobuf objects or pre-serialized bytes to the SDK.
 
 ```python
-# Create protobuf object
+# Option 1: Pass protobuf object (implicit - SDK serializes for you)
 record = record_pb2.AirQuality(device_name="sensor-1", temp=25, humidity=60)
-
-# SDK serializes automatically
+table_properties = TableProperties(TABLE_NAME, record_pb2.AirQuality.DESCRIPTOR)
 ack = stream.ingest_record(record)
-```
 
-#### 2. Explicit Protobuf
-**Files:** `sync_example_proto_explicit.py`, `async_example_proto_explicit.py`
-
-- Manually serialize protobuf objects to bytes before passing to SDK
-- Gives you control over the serialization process
-- **Best for:** Custom serialization logic or performance optimization
-
-```python
-# Create and serialize protobuf object
-record = record_pb2.AirQuality(device_name="sensor-1", temp=25, humidity=60)
+# Option 2: Pre-serialize yourself (explicit)
 serialized = record.SerializeToString()
-
-# Pass serialized bytes to SDK
-table_properties = TableProperties(TABLE_NAME, record_pb2.AirQuality.DESCRIPTOR, record_type=RecordType.PROTOBUF)
+table_properties = TableProperties(TABLE_NAME, record_pb2.AirQuality.DESCRIPTOR)
+options = StreamConfigurationOptions(record_type=RecordType.PROTO)
 ack = stream.ingest_record(serialized)
 ```
 
-#### 3. Explicit JSON
+#### JSON
 **Files:** `sync_example_json.py`, `async_example_json.py`
 
-- Send records as JSON-encoded strings
-- No protobuf schema required
-- **Best for:** Dynamic schemas, JSON data pipelines, or integration with JSON-based systems
+Good for getting started. Send records as JSON-encoded strings. No protobuf schema required.
 
 ```python
 # Create JSON string
 json_record = json.dumps({"device_name": "sensor-1", "temp": 25, "humidity": 60})
 
 # Configure for JSON mode
-table_properties = TableProperties(TABLE_NAME, record_type=RecordType.JSON)
+table_properties = TableProperties(TABLE_NAME)
+options = StreamConfigurationOptions(record_type=RecordType.JSON)
 ack = stream.ingest_record(json_record)
 ```
 
@@ -151,21 +135,16 @@ Both APIs provide the same functionality and performance. The key differences ar
 
 **Performance:** Both APIs offer equivalent throughput and durability. Choose based on your application's architecture, not performance needs.
 
-### Record Type Mode Comparison
+### Serialization Format Comparison
 
-| Mode | Record Input | Table Properties Configuration | When to Use |
-|------|-------------|-------------------------------|-------------|
-| **Implicit Protobuf** (Default) | Protobuf object | `TableProperties(table_name, descriptor)` | Most protobuf use cases (recommended) |
-| **Explicit Protobuf** | Serialized bytes | `TableProperties(table_name, descriptor, record_type=RecordType.PROTOBUF)` | Custom serialization control |
-| **Explicit JSON** | JSON string | `TableProperties(table_name, record_type=RecordType.JSON)` | Dynamic schemas, JSON pipelines |
+| Format | Record Input | Configuration |
+|--------|-------------|---------------|
+| **Protobuf** (Default) | Protobuf object or bytes | `TableProperties(table_name, descriptor)` |
+| **JSON** | JSON string | `TableProperties(table_name)` + `StreamConfigurationOptions(record_type=RecordType.JSON)` |
 
 ## Authentication
 
-Both examples demonstrate:
-- OAuth 2.0 authentication (default, using `create_stream()`)
-- Custom headers provider (advanced, using `create_stream_with_headers_provider()`)
-
-See the inline comments in each example file for details.
+All examples demonstrate OAuth 2.0 authentication using `create_stream()`. See the inline comments in each example file for details.
 
 ## Using Your Own Schema
 
@@ -188,7 +167,7 @@ To use your own JSON structure:
    ```python
    json_record = json.dumps({"field1": "value1", "field2": 123})
    ```
-2. Configure TableProperties with `record_type=RecordType.JSON`
+2. Configure `StreamConfigurationOptions` with `record_type=RecordType.JSON`
 3. Ensure your JSON structure matches the schema of your Databricks table
 
 Note: The SDK sends JSON strings directly without client-side schema validation.

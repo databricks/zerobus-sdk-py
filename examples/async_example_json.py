@@ -26,7 +26,8 @@ import os
 import time
 
 from zerobus.sdk.aio import ZerobusSdk
-from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
+from zerobus.sdk.shared import (RecordType, StreamConfigurationOptions,
+                                TableProperties)
 from zerobus.sdk.shared.headers_provider import HeadersProvider
 
 # Configure logging
@@ -61,11 +62,7 @@ def create_sample_json_record(index):
 
     With explicit JSON mode, records are plain JSON strings that match your schema.
     """
-    record_dict = {
-        "device_name": f"sensor-{index % 10}",
-        "temp": 20 + (index % 15),
-        "humidity": 50 + (index % 40)
-    }
+    record_dict = {"device_name": f"sensor-{index % 10}", "temp": 20 + (index % 15), "humidity": 50 + (index % 40)}
     return json.dumps(record_dict)
 
 
@@ -137,17 +134,18 @@ async def main():
         sdk = ZerobusSdk(SERVER_ENDPOINT, UNITY_CATALOG_ENDPOINT)
         logger.info("✓ SDK initialized")
 
-        # Step 2: Configure stream options with ack callback
+        # Step 2: Configure stream options with JSON record type and ack callback
         options = StreamConfigurationOptions(
+            record_type=RecordType.JSON,
             max_inflight_records=10_000,  # Allow 10k records in flight
             recovery=True,  # Enable automatic recovery
             ack_callback=create_ack_callback(),  # Track acknowledgments
         )
         logger.info("✓ Stream configuration created")
 
-        # Step 3: Define table properties with explicit JSON record type
+        # Step 3: Define table properties
         # Note: No protobuf descriptor needed for JSON mode
-        table_properties = TableProperties(TABLE_NAME, record_type=RecordType.JSON)
+        table_properties = TableProperties(TABLE_NAME)
         logger.info(f"✓ Table properties configured for: {TABLE_NAME} (JSON mode)")
 
         # Step 4: Create a stream with OAuth 2.0 authentication

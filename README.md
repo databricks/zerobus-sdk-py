@@ -139,14 +139,10 @@ pip install -e .
 
 The SDK supports two serialization formats:
 
-1. **JSON (Recommended for getting started)** - Simple, no schema compilation needed
-2. **Protocol Buffers** - Strongly-typed, optimized for performance
+1. **JSON** - Simple, no schema compilation needed. Good for getting started.
+2. **Protocol Buffers (Default to maintain backwards compatibility)** - Strongly-typed schemas. More efficient over the wire.
 
-Choose the format that best fits your use case. JSON is simpler to get started with, while Protocol Buffers offer better type safety and can be more efficient for complex schemas.
-
-### Option 1: Using JSON (Simplest)
-
-JSON mode is the quickest way to get started - no schema files or compilation needed!
+### Option 1: Using JSON
 
 #### Write Your Client Code (JSON)
 
@@ -179,11 +175,14 @@ client_secret = "your-service-principal-secret"
 # Initialize SDK
 sdk = ZerobusSdk(server_endpoint, workspace_url)
 
-# Configure table properties for JSON mode
-table_properties = TableProperties(table_name, record_type=RecordType.JSON)
+# Configure table properties
+table_properties = TableProperties(table_name)
+
+# Configure stream with JSON record type
+options = StreamConfigurationOptions(record_type=RecordType.JSON)
 
 # Create stream
-stream = sdk.create_stream(client_id, client_secret, table_properties)
+stream = sdk.create_stream(client_id, client_secret, table_properties, options)
 
 try:
     # Ingest records
@@ -237,11 +236,14 @@ async def main():
     # Initialize SDK
     sdk = ZerobusSdk(server_endpoint, workspace_url)
 
-    # Configure table properties for JSON mode
-    table_properties = TableProperties(table_name, record_type=RecordType.JSON)
+    # Configure table properties
+    table_properties = TableProperties(table_name)
+
+    # Configure stream with JSON record type
+    options = StreamConfigurationOptions(record_type=RecordType.JSON)
 
     # Create stream
-    stream = await sdk.create_stream(client_id, client_secret, table_properties)
+    stream = await sdk.create_stream(client_id, client_secret, table_properties, options)
 
     try:
         # Ingest records
@@ -268,7 +270,7 @@ asyncio.run(main())
 
 ### Option 2: Using Protocol Buffers
 
-Protocol Buffers provide strong typing and can be more efficient. You'll need to define and compile a schema.
+You'll need to define and compile a protobuf schema.
 
 #### Define Your Protocol Buffer Schema
 
@@ -450,22 +452,7 @@ asyncio.run(main())
 
 ## Usage Examples
 
-See the `examples/` directory for complete, runnable examples demonstrating all three record type modes (implicit protobuf, explicit protobuf, and JSON) in both sync and async variants:
-
-- `sync_example_json.py` / `async_example_json.py` - JSON mode (simplest)
-- `sync_example_proto_implicit.py` / `async_example_proto_implicit.py` - Implicit protobuf (default, recommended for protobuf)
-- `sync_example_proto_explicit.py` / `async_example_proto_explicit.py` - Explicit protobuf (advanced)
-
-All examples demonstrate:
-- SDK initialization and configuration
-- Stream creation and management
-- Record ingestion (sync/async)
-- Progress tracking and callbacks
-- Error handling
-- Performance metrics
-- Proper resource cleanup
-
-To run the examples, set your credentials as environment variables and execute the scripts. See [examples/README.md](examples/README.md) for detailed instructions.
+See the `examples/` directory for complete, runnable examples in both JSON and protobuf formats (sync and async variants). See [examples/README.md](examples/README.md) for detailed instructions.
 
 ### JSON Examples
 
@@ -475,13 +462,14 @@ To run the examples, set your credentials as environment variables and execute t
 import json
 import logging
 from zerobus.sdk.sync import ZerobusSdk
-from zerobus.sdk.shared import RecordType, TableProperties
+from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
 
 logging.basicConfig(level=logging.INFO)
 
 sdk = ZerobusSdk(server_endpoint, workspace_url)
-table_properties = TableProperties(table_name, record_type=RecordType.JSON)
-stream = sdk.create_stream(client_id, client_secret, table_properties)
+table_properties = TableProperties(table_name)
+options = StreamConfigurationOptions(record_type=RecordType.JSON)
+stream = sdk.create_stream(client_id, client_secret, table_properties, options)
 
 try:
     for i in range(1000):
@@ -511,6 +499,7 @@ logging.basicConfig(level=logging.INFO)
 
 async def main():
     options = StreamConfigurationOptions(
+        record_type=RecordType.JSON,
         max_inflight_records=50000,
         ack_callback=lambda response: print(
             f"Acknowledged offset: {response.durability_ack_up_to_offset}"
@@ -518,7 +507,7 @@ async def main():
     )
 
     sdk = ZerobusSdk(server_endpoint, workspace_url)
-    table_properties = TableProperties(table_name, record_type=RecordType.JSON)
+    table_properties = TableProperties(table_name)
     stream = await sdk.create_stream(client_id, client_secret, table_properties, options)
 
     futures = []
@@ -839,12 +828,7 @@ Represents an active ingestion stream.
 ```python
 def ingest_record(record: Union[str, bytes, Message]) -> RecordAcknowledgment
 ```
-Ingests a single record into the stream. The record type depends on the `TableProperties` configuration:
-- **JSON mode** (`RecordType.JSON`): Pass a JSON string
-- **Implicit protobuf mode** (default): Pass a protobuf message object
-- **Explicit protobuf mode** (`RecordType.PROTOBUF`): Pass serialized bytes
-
-Returns a `RecordAcknowledgment` for tracking.
+Ingests a single record. Pass a JSON string (JSON mode) or protobuf message/bytes (protobuf mode). Returns a `RecordAcknowledgment` for tracking.
 
 ```python
 def flush() -> None
@@ -874,12 +858,7 @@ Returns the unique stream ID assigned by the server.
 ```python
 async def ingest_record(record: Union[str, bytes, Message]) -> Awaitable
 ```
-Ingests a single record into the stream. The record type depends on the `TableProperties` configuration:
-- **JSON mode** (`RecordType.JSON`): Pass a JSON string
-- **Implicit protobuf mode** (default): Pass a protobuf message object
-- **Explicit protobuf mode** (`RecordType.PROTOBUF`): Pass serialized bytes
-
-Returns an awaitable that completes when the record is durably written.
+Ingests a single record. Pass a JSON string (JSON mode) or protobuf message/bytes (protobuf mode). Returns an awaitable that completes when the record is durably written.
 
 ```python
 async def flush() -> None
@@ -906,44 +885,26 @@ Returns the unique stream ID assigned by the server.
 
 ### TableProperties
 
-Configuration for the target table and record serialization format.
+Configuration for the target table.
 
-**Constructors:**
+**Constructor:**
 
-For **JSON mode** (simplest):
 ```python
-TableProperties(table_name: str, record_type: RecordType = RecordType.JSON)
-```
-
-For **Protobuf mode** (implicit serialization, default):
-```python
-TableProperties(table_name: str, descriptor: Descriptor)
-```
-
-For **Protobuf mode** (explicit serialization, advanced):
-```python
-TableProperties(table_name: str, descriptor: Descriptor, record_type: RecordType.PROTOBUF)
+TableProperties(table_name: str, descriptor: Descriptor = None)
 ```
 
 **Parameters:**
 - `table_name` (str) - Fully qualified table name (e.g., `catalog.schema.table`)
-- `descriptor` (Descriptor) - Protobuf message descriptor (e.g., `MyMessage.DESCRIPTOR`). Required for protobuf mode, not used for JSON mode.
-- `record_type` (RecordType) - Serialization format:
-  - `RecordType.JSON` - Use JSON serialization (pass JSON strings to `ingest_record`)
-  - `RecordType.PROTOBUF` - Use explicit protobuf serialization (pass serialized bytes to `ingest_record`)
-  - If not specified and `descriptor` is provided, uses implicit protobuf mode (pass protobuf objects to `ingest_record`)
+- `descriptor` (Descriptor) - Protobuf message descriptor (e.g., `MyMessage.DESCRIPTOR`). Required for protobuf mode, not needed for JSON mode.
 
 **Examples:**
 
 ```python
 # JSON mode
-table_properties = TableProperties("catalog.schema.table", record_type=RecordType.JSON)
+table_properties = TableProperties("catalog.schema.table")
 
-# Implicit protobuf mode (default, recommended for protobuf)
+# Protobuf mode (default)
 table_properties = TableProperties("catalog.schema.table", record_pb2.MyMessage.DESCRIPTOR)
-
-# Explicit protobuf mode (advanced)
-table_properties = TableProperties("catalog.schema.table", record_pb2.MyMessage.DESCRIPTOR, record_type=RecordType.PROTOBUF)
 ```
 
 **Properties:**
@@ -1031,6 +992,7 @@ Configuration options for stream behavior.
 **Constructor:**
 ```python
 StreamConfigurationOptions(
+    record_type: RecordType = RecordType.PROTO,
     max_inflight_records: int = 50000,
     recovery: bool = True,
     recovery_timeout_ms: int = 15000,
@@ -1043,6 +1005,7 @@ StreamConfigurationOptions(
 ```
 
 **Parameters:**
+- `record_type` (RecordType) - Serialization format: `RecordType.PROTO` (default) or `RecordType.JSON`
 - `max_inflight_records` (int) - Maximum number of unacknowledged records (default: 50000)
 - `recovery` (bool) - Enable or disable automatic stream recovery (default: True)
 - `recovery_timeout_ms` (int) - Recovery operation timeout in milliseconds (default: 15000)
