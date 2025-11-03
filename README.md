@@ -152,7 +152,7 @@ The SDK supports two serialization formats:
 import json
 import logging
 from zerobus.sdk.sync import ZerobusSdk
-from zerobus.sdk.shared import RecordType, TableProperties
+from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
 
 # Configure logging (optional but recommended)
 logging.basicConfig(
@@ -212,7 +212,7 @@ import asyncio
 import json
 import logging
 from zerobus.sdk.aio import ZerobusSdk
-from zerobus.sdk.shared import RecordType, TableProperties
+from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
 
 # Configure logging (optional but recommended)
 logging.basicConfig(
@@ -307,15 +307,17 @@ python -m zerobus.tools.generate_proto \
     --client-id "your-service-principal-application-id" \
     --client-secret "your-service-principal-secret" \
     --table "main.default.air_quality" \
-    --output "record.proto"
+    --output "record.proto" \
+    --proto-msg "AirQuality"
 ```
 
 **Parameters:**
-- `--uc-endpoint`: Your workspace URL
-- `--client-id`: Service principal application ID
-- `--client-secret`: Service principal secret
-- `--table`: Fully qualified table name (catalog.schema.table)
-- `--output`: Output path for the generated proto file
+- `--uc-endpoint`: Your workspace URL (required)
+- `--client-id`: Service principal application ID (required)
+- `--client-secret`: Service principal secret (required)
+- `--table`: Fully qualified table name in format catalog.schema.table (required)
+- `--output`: Output path for the generated proto file (required)
+- `--proto-msg`: Name of the protobuf message (optional, defaults to table name)
 
 After generating, compile it as shown above.
 
@@ -684,6 +686,7 @@ stream = sdk.create_stream_with_headers_provider(
 
 | Option | Default | Description |
 |--------|---------|-------------|
+| `record_type` | `RecordType.PROTO` | Serialization format: `RecordType.PROTO` or `RecordType.JSON` |
 | `max_inflight_records` | 50000 | Maximum number of unacknowledged records |
 | `recovery` | True | Enable automatic stream recovery |
 | `recovery_timeout_ms` | 15000 | Timeout for recovery operations (ms) |
@@ -906,26 +909,6 @@ table_properties = TableProperties("catalog.schema.table")
 # Protobuf mode (default)
 table_properties = TableProperties("catalog.schema.table", record_pb2.MyMessage.DESCRIPTOR)
 ```
-
-**Properties:**
-
-```python
-@property
-def table_name() -> str
-```
-Returns the table name.
-
-```python
-@property
-def descriptor() -> Descriptor
-```
-Returns the protobuf message descriptor (None for JSON mode).
-
-```python
-@property
-def record_type() -> RecordType
-```
-Returns the record serialization type.
 
 ---
 
