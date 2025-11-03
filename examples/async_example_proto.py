@@ -23,7 +23,8 @@ import time
 import record_pb2
 
 from zerobus.sdk.aio import ZerobusSdk
-from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
+from zerobus.sdk.shared import (RecordType, StreamConfigurationOptions,
+                                TableProperties)
 from zerobus.sdk.shared.headers_provider import HeadersProvider
 
 # Configure logging
