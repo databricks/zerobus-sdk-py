@@ -6,8 +6,9 @@ please use `from zerobus_sdk.aio import ...`.
 """
 
 from . import sync
-from .shared import (NonRetriableException, StreamConfigurationOptions,
-                     StreamState, TableProperties, ZerobusException)
+from .shared import (NonRetriableException, RecordType,
+                     StreamConfigurationOptions, StreamState, TableProperties,
+                     ZerobusException)
 
 ZerobusSdk = sync.ZerobusSdk
 ZerobusStream = sync.ZerobusStream
@@ -19,6 +20,7 @@ __all__ = [
     "RecordAcknowledgment",
     "TableProperties",
     "StreamConfigurationOptions",
+    "RecordType",
     "ZerobusException",
     "NonRetriableException",
     "StreamState",

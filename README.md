@@ -18,12 +18,12 @@ The Databricks Zerobus Ingest SDK for Python provides a high-performance client 
 - [Quick Start User Guide](#quick-start-user-guide)
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
-  - [Define Your Protocol Buffer Schema](#define-your-protocol-buffer-schema)
-  - [Generate Protocol Buffer Schema from Unity Catalog (Alternative)](#generate-protocol-buffer-schema-from-unity-catalog-alternative)
-  - [Write Your Client Code](#write-your-client-code)
+  - [Choose Your Serialization Format](#choose-your-serialization-format)
+  - [Option 1: Using JSON (Simplest)](#option-1-using-json-simplest)
+  - [Option 2: Using Protocol Buffers](#option-2-using-protocol-buffers)
 - [Usage Examples](#usage-examples)
-  - [Blocking Ingestion](#blocking-ingestion)
-  - [Non-Blocking Ingestion](#non-blocking-ingestion)
+  - [JSON Examples](#json-examples)
+  - [Protocol Buffer Examples](#protocol-buffer-examples)
 - [Authentication](#authentication)
 - [Configuration](#configuration)
 - [Error Handling](#error-handling)
@@ -35,7 +35,7 @@ The Databricks Zerobus Ingest SDK for Python provides a high-performance client 
 - **High-throughput ingestion**: Optimized for high-volume data ingestion
 - **Automatic recovery**: Built-in retry and recovery mechanisms
 - **Flexible configuration**: Customizable stream behavior and timeouts
-- **Protocol Buffers**: Strongly-typed schema using protobuf
+- **Multiple serialization formats**: Support for JSON and Protocol Buffers
 - **OAuth 2.0 authentication**: Secure authentication with client credentials
 - **Sync and Async support**: Both synchronous and asynchronous APIs
 - **Comprehensive logging**: Detailed logging using Python's standard logging framework
@@ -135,7 +135,144 @@ cd zerobus-sdk-py
 pip install -e .
 ```
 
-### Define Your Protocol Buffer Schema
+### Choose Your Serialization Format
+
+The SDK supports two serialization formats:
+
+1. **JSON** - Simple, no schema compilation needed. Good for getting started.
+2. **Protocol Buffers (Default to maintain backwards compatibility)** - Strongly-typed schemas. More efficient over the wire.
+
+### Option 1: Using JSON
+
+#### Write Your Client Code (JSON)
+
+**Synchronous Example:**
+
+```python
+import json
+import logging
+from zerobus.sdk.sync import ZerobusSdk
+from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
+
+# Configure logging (optional but recommended)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
+# Configuration
+# For AWS:
+server_endpoint = "1234567890123456.zerobus.us-west-2.cloud.databricks.com"
+workspace_url = "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com"
+# For Azure:
+# server_endpoint = "1234567890123456.zerobus.us-west-2.azuredatabricks.net"
+# workspace_url = "https://dbc-a1b2c3d4-e5f6.azuredatabricks.net"
+
+table_name = "main.default.air_quality"
+client_id = "your-service-principal-application-id"
+client_secret = "your-service-principal-secret"
+
+# Initialize SDK
+sdk = ZerobusSdk(server_endpoint, workspace_url)
+
+# Configure table properties
+table_properties = TableProperties(table_name)
+
+# Configure stream with JSON record type
+options = StreamConfigurationOptions(record_type=RecordType.JSON)
+
+# Create stream
+stream = sdk.create_stream(client_id, client_secret, table_properties, options)
+
+try:
+    # Ingest records
+    for i in range(100):
+        # Create JSON record
+        record_dict = {
+            "device_name": f"sensor-{i % 10}",
+            "temp": 20 + (i % 15),
+            "humidity": 50 + (i % 40)
+        }
+        json_record = json.dumps(record_dict)
+
+        ack = stream.ingest_record(json_record)
+        ack.wait_for_ack()  # Optional: Wait for durability confirmation
+
+        print(f"Ingested record {i + 1}")
+
+    print("Successfully ingested 100 records!")
+finally:
+    stream.close()
+```
+
+**Asynchronous Example:**
+
+```python
+import asyncio
+import json
+import logging
+from zerobus.sdk.aio import ZerobusSdk
+from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
+
+# Configure logging (optional but recommended)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
+async def main():
+    # Configuration
+    # For AWS:
+    server_endpoint = "1234567890123456.zerobus.us-west-2.cloud.databricks.com"
+    workspace_url = "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com"
+    # For Azure:
+    # server_endpoint = "1234567890123456.zerobus.us-west-2.azuredatabricks.net"
+    # workspace_url = "https://dbc-a1b2c3d4-e5f6.azuredatabricks.net"
+
+    table_name = "main.default.air_quality"
+    client_id = "your-service-principal-application-id"
+    client_secret = "your-service-principal-secret"
+
+    # Initialize SDK
+    sdk = ZerobusSdk(server_endpoint, workspace_url)
+
+    # Configure table properties
+    table_properties = TableProperties(table_name)
+
+    # Configure stream with JSON record type
+    options = StreamConfigurationOptions(record_type=RecordType.JSON)
+
+    # Create stream
+    stream = await sdk.create_stream(client_id, client_secret, table_properties, options)
+
+    try:
+        # Ingest records
+        for i in range(100):
+            # Create JSON record
+            record_dict = {
+                "device_name": f"sensor-{i % 10}",
+                "temp": 20 + (i % 15),
+                "humidity": 50 + (i % 40)
+            }
+            json_record = json.dumps(record_dict)
+
+            future = await stream.ingest_record(json_record)
+            await future  # Optional: Wait for durability confirmation
+
+            print(f"Ingested record {i + 1}")
+
+        print("Successfully ingested 100 records!")
+    finally:
+        await stream.close()
+
+asyncio.run(main())
+```
+
+### Option 2: Using Protocol Buffers
+
+You'll need to define and compile a protobuf schema.
+
+#### Define Your Protocol Buffer Schema
 
 Create a file named `record.proto`:
 
@@ -158,13 +295,9 @@ python -m grpc_tools.protoc --python_out=. --proto_path=. record.proto
 
 This generates a `record_pb2.py` file compatible with protobuf 6.x.
 
-### Generate Protocol Buffer Schema from Unity Catalog (Alternative)
+#### Generate Protocol Buffer Schema from Unity Catalog (Alternative)
 
-Instead of manually writing and compiling your protobuf schema, you can automatically generate it from an existing Unity Catalog table schema using the included `generate_proto.py` tool.
-
-#### Using the Proto Generation Tool
-
-The `generate_proto.py` tool fetches your table schema from Unity Catalog and generates a corresponding proto2 definition file with the correct type mappings.
+Instead of manually writing your protobuf schema, you can automatically generate it from an existing Unity Catalog table using the included `generate_proto.py` tool.
 
 **Basic Usage:**
 
@@ -174,49 +307,21 @@ python -m zerobus.tools.generate_proto \
     --client-id "your-service-principal-application-id" \
     --client-secret "your-service-principal-secret" \
     --table "main.default.air_quality" \
-    --output "record.proto"
+    --output "record.proto" \
+    --proto-msg "AirQuality"
 ```
 
 **Parameters:**
-- `--uc-endpoint`: Your workspace URL (e.g., `https://dbc-a1b2c3d4-e5f6.cloud.databricks.com` for AWS, or `https://dbc-a1b2c3d4-e5f6.azuredatabricks.net` for Azure)
-- `--client-id`: Service principal application ID
-- `--client-secret`: Service principal secret
-- `--table`: Fully qualified table name (catalog.schema.table)
-- `--output`: Output path for the generated proto file
-- `--proto-msg`: (Optional) Name for the protobuf message (defaults to table name)
+- `--uc-endpoint`: Your workspace URL (required)
+- `--client-id`: Service principal application ID (required)
+- `--client-secret`: Service principal secret (required)
+- `--table`: Fully qualified table name in format catalog.schema.table (required)
+- `--output`: Output path for the generated proto file (required)
+- `--proto-msg`: Name of the protobuf message (optional, defaults to table name)
 
-**Example:**
-
-For a table defined as:
-```sql
-CREATE TABLE main.default.air_quality (
-    device_name STRING,
-    temp INT,
-    humidity BIGINT
-)
-USING DELTA;
-```
-
-Running the generation tool will create `record.proto`:
-```protobuf
-syntax = "proto2";
-
-message air_quality {
-    optional string device_name = 1;
-    optional int32 temp = 2;
-    optional int64 humidity = 3;
-}
-```
-
-After generating the proto file, compile it as shown above:
-```bash
-pip install "grpcio-tools>=1.60.0,<2.0"
-python -m grpc_tools.protoc --python_out=. --proto_path=. record.proto
-```
+After generating, compile it as shown above.
 
 **Type Mappings:**
-
-The tool automatically maps Unity Catalog types to proto2 types:
 
 | Delta Type | Proto2 Type |
 |-----------|-------------|
@@ -233,15 +338,9 @@ The tool automatically maps Unity Catalog types to proto2 types:
 | MAP\<key, value\> | map\<key, value\> |
 | STRUCT\<fields\> | nested message |
 
-**Benefits:**
-- No manual schema creation required
-- Ensures schema consistency between your table and protobuf definitions
-- Automatically handles complex types (arrays, maps, structs)
-- Reduces errors from manual type mapping
+#### Write Your Client Code (Protocol Buffers)
 
-### Write Your Client Code
-
-#### Synchronous Example
+**Synchronous Example:**
 
 ```python
 import logging
@@ -256,7 +355,6 @@ logging.basicConfig(
 )
 
 # Configuration
-
 # For AWS:
 server_endpoint = "1234567890123456.zerobus.us-west-2.cloud.databricks.com"
 workspace_url = "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com"
@@ -271,18 +369,11 @@ client_secret = "your-service-principal-secret"
 # Initialize SDK
 sdk = ZerobusSdk(server_endpoint, workspace_url)
 
-# Configure table properties
-table_properties = TableProperties(
-    table_name,
-    record_pb2.AirQuality.DESCRIPTOR
-)
+# Configure table properties with protobuf descriptor
+table_properties = TableProperties(table_name, record_pb2.AirQuality.DESCRIPTOR)
 
 # Create stream
-stream = sdk.create_stream(
-    client_id,
-    client_secret,
-    table_properties
-)
+stream = sdk.create_stream(client_id, client_secret, table_properties)
 
 try:
     # Ingest records
@@ -303,7 +394,7 @@ finally:
     stream.close()
 ```
 
-#### Asynchronous Example
+**Asynchronous Example:**
 
 ```python
 import asyncio
@@ -320,11 +411,9 @@ logging.basicConfig(
 
 async def main():
     # Configuration
-
     # For AWS:
     server_endpoint = "1234567890123456.zerobus.us-west-2.cloud.databricks.com"
     workspace_url = "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com"
-
     # For Azure:
     # server_endpoint = "1234567890123456.zerobus.us-west-2.azuredatabricks.net"
     # workspace_url = "https://dbc-a1b2c3d4-e5f6.azuredatabricks.net"
@@ -336,18 +425,11 @@ async def main():
     # Initialize SDK
     sdk = ZerobusSdk(server_endpoint, workspace_url)
 
-    # Configure table properties
-    table_properties = TableProperties(
-        table_name,
-        record_pb2.AirQuality.DESCRIPTOR
-    )
+    # Configure table properties with protobuf descriptor
+    table_properties = TableProperties(table_name, record_pb2.AirQuality.DESCRIPTOR)
 
     # Create stream
-    stream = await sdk.create_stream(
-        client_id,
-        client_secret,
-        table_properties
-    )
+    stream = await sdk.create_stream(client_id, client_secret, table_properties)
 
     try:
         # Ingest records
@@ -372,25 +454,88 @@ asyncio.run(main())
 
 ## Usage Examples
 
-See the `examples/` directory for complete, runnable examples:
+See the `examples/` directory for complete, runnable examples in both JSON and protobuf formats (sync and async variants). See [examples/README.md](examples/README.md) for detailed instructions.
 
-- **sync_example.py** - Synchronous ingestion with progress tracking and all SDK features
-- **async_example.py** - Asynchronous ingestion using asyncio with acknowledgment callbacks
+### JSON Examples
 
-Both examples are fully functional and demonstrate:
-- SDK initialization and configuration
-- Stream creation and management
-- Record ingestion (sync/async)
-- Progress tracking and callbacks
-- Error handling
-- Performance metrics
-- Proper resource cleanup
+#### Blocking Ingestion (JSON)
 
-To run the examples, set your credentials as environment variables and execute the scripts. See [examples/README.md](examples/README.md) for detailed instructions.
+```python
+import json
+import logging
+from zerobus.sdk.sync import ZerobusSdk
+from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
 
-### Blocking Ingestion
+logging.basicConfig(level=logging.INFO)
 
-Ingest records using the synchronous API:
+sdk = ZerobusSdk(server_endpoint, workspace_url)
+table_properties = TableProperties(table_name)
+options = StreamConfigurationOptions(record_type=RecordType.JSON)
+stream = sdk.create_stream(client_id, client_secret, table_properties, options)
+
+try:
+    for i in range(1000):
+        record_dict = {
+            "device_name": f"sensor-{i}",
+            "temp": 20 + i % 15,
+            "humidity": 50 + i % 40
+        }
+        json_record = json.dumps(record_dict)
+
+        ack = stream.ingest_record(json_record)
+        ack.wait_for_ack()  # Optional: Wait for durability confirmation
+finally:
+    stream.close()
+```
+
+#### Non-Blocking Ingestion (JSON)
+
+```python
+import asyncio
+import json
+import logging
+from zerobus.sdk.aio import ZerobusSdk
+from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
+
+logging.basicConfig(level=logging.INFO)
+
+async def main():
+    options = StreamConfigurationOptions(
+        record_type=RecordType.JSON,
+        max_inflight_records=50000,
+        ack_callback=lambda response: print(
+            f"Acknowledged offset: {response.durability_ack_up_to_offset}"
+        )
+    )
+
+    sdk = ZerobusSdk(server_endpoint, workspace_url)
+    table_properties = TableProperties(table_name)
+    stream = await sdk.create_stream(client_id, client_secret, table_properties, options)
+
+    futures = []
+    try:
+        for i in range(100000):
+            record_dict = {
+                "device_name": f"sensor-{i % 10}",
+                "temp": 20 + i % 15,
+                "humidity": 50 + i % 40
+            }
+            json_record = json.dumps(record_dict)
+
+            future = await stream.ingest_record(json_record)
+            futures.append(future)
+
+        await stream.flush()
+        await asyncio.gather(*futures)
+    finally:
+        await stream.close()
+
+asyncio.run(main())
+```
+
+### Protocol Buffer Examples
+
+#### Blocking Ingestion (Protobuf)
 
 ```python
 import logging
@@ -398,15 +543,10 @@ from zerobus.sdk.sync import ZerobusSdk
 from zerobus.sdk.shared import TableProperties
 import record_pb2
 
-# Configure logging (optional but recommended)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO)
 
 sdk = ZerobusSdk(server_endpoint, workspace_url)
 table_properties = TableProperties(table_name, record_pb2.AirQuality.DESCRIPTOR)
-
 stream = sdk.create_stream(client_id, client_secret, table_properties)
 
 try:
@@ -423,9 +563,7 @@ finally:
     stream.close()
 ```
 
-### Non-Blocking Ingestion
-
-Ingest records using the asynchronous API:
+#### Non-Blocking Ingestion (Protobuf)
 
 ```python
 import asyncio
@@ -434,11 +572,7 @@ from zerobus.sdk.aio import ZerobusSdk
 from zerobus.sdk.shared import TableProperties, StreamConfigurationOptions
 import record_pb2
 
-# Configure logging (optional but recommended)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO)
 
 async def main():
     options = StreamConfigurationOptions(
@@ -450,16 +584,9 @@ async def main():
 
     sdk = ZerobusSdk(server_endpoint, workspace_url)
     table_properties = TableProperties(table_name, record_pb2.AirQuality.DESCRIPTOR)
-
-    stream = await sdk.create_stream(
-        client_id,
-        client_secret,
-        table_properties,
-        options
-    )
+    stream = await sdk.create_stream(client_id, client_secret, table_properties, options)
 
     futures = []
-
     try:
         for i in range(100000):
             record = record_pb2.AirQuality(
@@ -471,7 +598,6 @@ async def main():
             future = await stream.ingest_record(record)
             futures.append(future)
 
-        # Flush and wait for all records
         await stream.flush()
         await asyncio.gather(*futures)
     finally:
@@ -560,6 +686,7 @@ stream = sdk.create_stream_with_headers_provider(
 
 | Option | Default | Description |
 |--------|---------|-------------|
+| `record_type` | `RecordType.PROTO` | Serialization format: `RecordType.PROTO` or `RecordType.JSON` |
 | `max_inflight_records` | 50000 | Maximum number of unacknowledged records |
 | `recovery` | True | Enable automatic stream recovery |
 | `recovery_timeout_ms` | 15000 | Timeout for recovery operations (ms) |
@@ -702,9 +829,9 @@ Represents an active ingestion stream.
 **Synchronous Methods:**
 
 ```python
-def ingest_record(record: Message) -> RecordAcknowledgment
+def ingest_record(record: Union[str, bytes, Message]) -> RecordAcknowledgment
 ```
-Ingests a single record into the stream. Returns a `RecordAcknowledgment` for tracking.
+Ingests a single record. Pass a JSON string (JSON mode) or protobuf message/bytes (protobuf mode). Returns a `RecordAcknowledgment` for tracking.
 
 ```python
 def flush() -> None
@@ -732,9 +859,9 @@ Returns the unique stream ID assigned by the server.
 **Asynchronous Methods:**
 
 ```python
-async def ingest_record(record: Message) -> Awaitable
+async def ingest_record(record: Union[str, bytes, Message]) -> Awaitable
 ```
-Ingests a single record into the stream. Returns an awaitable that completes when the record is durably written.
+Ingests a single record. Pass a JSON string (JSON mode) or protobuf message/bytes (protobuf mode). Returns an awaitable that completes when the record is durably written.
 
 ```python
 async def flush() -> None
@@ -764,27 +891,24 @@ Returns the unique stream ID assigned by the server.
 Configuration for the target table.
 
 **Constructor:**
+
 ```python
-TableProperties(table_name: str, descriptor: Descriptor)
+TableProperties(table_name: str, descriptor: Descriptor = None)
 ```
 
 **Parameters:**
 - `table_name` (str) - Fully qualified table name (e.g., `catalog.schema.table`)
-- `descriptor` (Descriptor) - Protobuf message descriptor (e.g., `MyMessage.DESCRIPTOR`)
+- `descriptor` (Descriptor) - Protobuf message descriptor (e.g., `MyMessage.DESCRIPTOR`). Required for protobuf mode, not needed for JSON mode.
 
-**Properties:**
-
-```python
-@property
-def table_name() -> str
-```
-Returns the table name.
+**Examples:**
 
 ```python
-@property
-def descriptor() -> Descriptor
+# JSON mode
+table_properties = TableProperties("catalog.schema.table")
+
+# Protobuf mode (default)
+table_properties = TableProperties("catalog.schema.table", record_pb2.MyMessage.DESCRIPTOR)
 ```
-Returns the protobuf message descriptor.
 
 ---
 
@@ -851,6 +975,7 @@ Configuration options for stream behavior.
 **Constructor:**
 ```python
 StreamConfigurationOptions(
+    record_type: RecordType = RecordType.PROTO,
     max_inflight_records: int = 50000,
     recovery: bool = True,
     recovery_timeout_ms: int = 15000,
@@ -863,6 +988,7 @@ StreamConfigurationOptions(
 ```
 
 **Parameters:**
+- `record_type` (RecordType) - Serialization format: `RecordType.PROTO` (default) or `RecordType.JSON`
 - `max_inflight_records` (int) - Maximum number of unacknowledged records (default: 50000)
 - `recovery` (bool) - Enable or disable automatic stream recovery (default: True)
 - `recovery_timeout_ms` (int) - Recovery operation timeout in milliseconds (default: 15000)

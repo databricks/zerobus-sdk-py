@@ -1,6 +1,6 @@
 # Zerobus SDK Examples
 
-This directory contains runnable example applications demonstrating both synchronous and asynchronous usage of the Zerobus Ingest SDK for Python.
+This directory contains runnable example applications demonstrating both synchronous and asynchronous usage of the Zerobus Ingest SDK for Python, with examples for both both record type modes: **protobuf** and **JSON**.
 
 For complete SDK documentation including installation, API reference, and configuration details, see the [main README](../README.md).
 
@@ -40,18 +40,53 @@ export ZEROBUS_TABLE_NAME="catalog.schema.table"
 ### 4. Run an Example
 
 ```bash
-# Synchronous example
-python examples/sync_example.py
+# Synchronous examples (blocking I/O)
+python examples/sync_example_proto.py     # Protobuf
+python examples/sync_example_json.py      # JSON
 
-# Asynchronous example
-python examples/async_example.py
+# Asynchronous examples (non-blocking I/O)
+python examples/async_example_proto.py    # Protobuf
+python examples/async_example_json.py     # JSON
 ```
 
 ## Examples Overview
 
-### Synchronous Example (`sync_example.py`)
+### Serialization Formats
 
-Uses the synchronous API (`zerobus.sdk.sync`). Suitable for:
+The SDK supports two serialization formats:
+
+#### Protocol Buffers
+**Files:** `sync_example_proto.py`, `async_example_proto.py`
+
+More efficient over the wire. Pass protobuf message objects to the SDK.
+
+```python
+# Create and ingest protobuf record
+record = record_pb2.AirQuality(device_name="sensor-1", temp=25, humidity=60)
+table_properties = TableProperties(TABLE_NAME, record_pb2.AirQuality.DESCRIPTOR)
+options = StreamConfigurationOptions(record_type=RecordType.PROTO)
+ack = stream.ingest_record(record)
+```
+
+#### JSON
+**Files:** `sync_example_json.py`, `async_example_json.py`
+
+Good for getting started. Send records as JSON-encoded strings. No protobuf schema required.
+
+```python
+# Create and ingest JSON record
+json_record = json.dumps({"device_name": "sensor-1", "temp": 25, "humidity": 60})
+table_properties = TableProperties(TABLE_NAME)
+options = StreamConfigurationOptions(record_type=RecordType.JSON)
+ack = stream.ingest_record(json_record)
+```
+
+### Synchronous vs Asynchronous APIs
+
+All record type modes are available in both synchronous and asynchronous variants:
+
+#### Synchronous API (`zerobus.sdk.sync`)
+Suitable for:
 - Simple scripts and applications
 - Code that doesn't use asyncio
 - Straightforward blocking I/O patterns
@@ -61,9 +96,8 @@ Uses the synchronous API (`zerobus.sdk.sync`). Suitable for:
 - Blocking API calls
 - Works in any Python environment
 
-### Asynchronous Example (`async_example.py`)
-
-Uses the asynchronous API (`zerobus.sdk.aio`). Suitable for:
+#### Asynchronous API (`zerobus.sdk.aio`)
+Suitable for:
 - Applications already using asyncio
 - Async web frameworks (FastAPI, aiohttp, etc.)
 - Event-driven architectures
@@ -74,7 +108,9 @@ Uses the asynchronous API (`zerobus.sdk.aio`). Suitable for:
 - Non-blocking API calls
 - Requires an asyncio event loop
 
-## API Differences
+## Quick Reference
+
+### API Comparison: Sync vs Async
 
 Both APIs provide the same functionality and performance. The key differences are:
 
@@ -90,15 +126,20 @@ Both APIs provide the same functionality and performance. The key differences ar
 
 **Performance:** Both APIs offer equivalent throughput and durability. Choose based on your application's architecture, not performance needs.
 
+### Serialization Format Comparison
+
+| Format | Record Input | Configuration |
+|--------|-------------|---------------|
+| **Protobuf** (Default) | Protobuf object or bytes | `TableProperties(table_name, descriptor)` |
+| **JSON** | JSON string | `TableProperties(table_name)` + `StreamConfigurationOptions(record_type=RecordType.JSON)` |
+
 ## Authentication
 
-Both examples demonstrate:
-- OAuth 2.0 authentication (default, using `create_stream()`)
-- Custom headers provider (advanced, using `create_stream_with_headers_provider()`)
-
-See the inline comments in each example file for details.
+All examples demonstrate OAuth 2.0 authentication using `create_stream()`. See the inline comments in each example file for details.
 
 ## Using Your Own Schema
+
+### For Protobuf Schemas
 
 To use your own protobuf schema:
 
@@ -108,6 +149,19 @@ To use your own protobuf schema:
    python -m grpc_tools.protoc --python_out=. --proto_path=. your_schema.proto
    ```
 3. Update the example code to import and use your generated protobuf classes
+
+### For JSON Mode
+
+To use your own JSON structure:
+
+1. Define your JSON structure in code:
+   ```python
+   json_record = json.dumps({"field1": "value1", "field2": 123})
+   ```
+2. Configure `StreamConfigurationOptions` with `record_type=RecordType.JSON`
+3. Ensure your JSON structure matches the schema of your Databricks table
+
+Note: The SDK sends JSON strings directly without client-side schema validation.
 
 ## Additional Resources
 
