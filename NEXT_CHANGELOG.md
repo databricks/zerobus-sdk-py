@@ -4,6 +4,7 @@
 
 ### New Features and Improvements
 
+- Loosened protobuf dependency constraint to support versions >= 4.25.0 and < 7.0
 - Added `HeadersProvider` abstraction for flexible authentication strategies
 - Implemented `OAuthHeadersProvider` for OAuth 2.0 Client Credentials flow (default authentication method used by `create_stream()`)
 

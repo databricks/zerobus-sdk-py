@@ -49,7 +49,7 @@ The Databricks Zerobus Ingest SDK for Python provides a high-performance client 
 
 ### Dependencies
 
-- `protobuf` >= 6.31.0, < 7.0
+- `protobuf` >= 4.25.0, < 7.0
 - `grpcio` >= 1.60.0, < 2.0
 - `requests` >= 2.28.1, < 3
 
