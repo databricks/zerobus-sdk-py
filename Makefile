@@ -57,7 +57,7 @@ fmt:
 	$(VENV) -m isort zerobus examples tests
 
 lint:
-	$(VENV) -m pycodestyle zerobus
+	$(VENV) -m pycodestyle --exclude='*_pb2*.py' zerobus
 	$(VENV) -m autoflake --check-diff --quiet --recursive --exclude '*_pb2*.py' zerobus
 
 test:
