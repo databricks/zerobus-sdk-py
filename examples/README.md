@@ -1,6 +1,6 @@
 # Zerobus SDK Examples
 
-This directory contains runnable example applications demonstrating both synchronous and asynchronous usage of the Zerobus Ingest SDK for Python, with examples for all three record type modes: **implicit protobuf** (default), **explicit protobuf**, and **explicit JSON**.
+This directory contains runnable example applications demonstrating both synchronous and asynchronous usage of the Zerobus Ingest SDK for Python, with examples for both both record type modes: **protobuf** and **JSON**.
 
 For complete SDK documentation including installation, API reference, and configuration details, see the [main README](../README.md).
 

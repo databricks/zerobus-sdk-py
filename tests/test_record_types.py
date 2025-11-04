@@ -1,6 +1,5 @@
 """
 Tests for different record types (PROTO and JSON).
-Tests cover implicit/default PROTO, explicit PROTO, and explicit JSON configurations.
 """
 
 import unittest
@@ -24,8 +23,8 @@ class TestRecordTypes(unittest.IsolatedAsyncioTestCase):
     """Test different record type configurations."""
 
     @for_both_sdks
-    async def test_implicit_proto_default(self, sdk: SdkManager):
-        """Test implicit/default PROTO behavior (backwards compatibility)."""
+    async def test_proto_default(self, sdk: SdkManager):
+        """Test default PROTO behavior."""
         calls_count = 0
         mock_grpc_stream = sdk.get_mock_class()(calls_count)
 
@@ -67,8 +66,8 @@ class TestRecordTypes(unittest.IsolatedAsyncioTestCase):
         mock_grpc_stream.cancel()
 
     @for_both_sdks
-    async def test_explicit_proto(self, sdk: SdkManager):
-        """Test explicit PROTO configuration."""
+    async def test_proto(self, sdk: SdkManager):
+        """Test PROTO configuration."""
         calls_count = 0
         mock_grpc_stream = sdk.get_mock_class()(calls_count)
 
@@ -84,7 +83,7 @@ class TestRecordTypes(unittest.IsolatedAsyncioTestCase):
         mock_channel = MockGrpcChannel()
         mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
 
-        # Explicitly specify PROTO record type
+        # Specify PROTO record type
         options = StreamConfigurationOptions(
             recovery=False,
             max_inflight_records=150,
@@ -115,7 +114,7 @@ class TestRecordTypes(unittest.IsolatedAsyncioTestCase):
         mock_grpc_stream.cancel()
 
     @for_both_sdks
-    async def test_json_records(self, sdk: SdkManager):
+    async def test_json(self, sdk: SdkManager):
         """Test JSON record ingestion."""
         calls_count = 0
         mock_grpc_stream = sdk.get_mock_class()(calls_count)

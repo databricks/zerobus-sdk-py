@@ -1,11 +1,11 @@
 """
-Synchronous Ingestion Example - Explicit JSON Mode
+Synchronous Ingestion Example - JSON Mode
 
-This example demonstrates record ingestion using the synchronous API with explicit JSON serialization.
+This example demonstrates record ingestion using the synchronous API with JSON serialization.
 
-Record Type Mode: EXPLICIT JSON
+Record Type Mode: JSON
   - Records are sent as JSON-encoded strings
-  - Uses RecordType.JSON to explicitly specify JSON serialization
+  - Uses RecordType.JSON to specify JSON serialization
   - Best for dynamic schemas or when working with JSON data
 
 Authentication:
@@ -56,7 +56,7 @@ def create_sample_json_record(index):
     """
     Creates a sample AirQuality record as a JSON string.
 
-    With explicit JSON mode, records are plain JSON strings that match your schema.
+    With JSON mode, records are plain JSON strings that match your schema.
     """
     record_dict = {"device_name": f"sensor-{index % 10}", "temp": 20 + (index % 15), "humidity": 50 + (index % 40)}
     return json.dumps(record_dict)
