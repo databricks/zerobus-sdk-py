@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77", "wheel"]
+requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,8 +9,7 @@ description = "Databricks Zerobus Ingest SDK for Python"
 readme = "README.md"
 requires-python = ">=3.9"
 keywords = ["zerobus", "databricks", "sdk"]
-license = "LicenseRef-Proprietary"
-license-files = ["LICENSE"]
+license = {text = "LicenseRef-Proprietary"}
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
