@@ -514,7 +514,12 @@ class ZerobusStream:
                 offset_id += 1
 
         except grpc.RpcError as e:
-            exception = log_and_get_exception(e)
+            # Only log if the stream is not being intentionally stopped
+            if self.__stop_event.is_set() and e.code() == grpc.StatusCode.CANCELLED:
+                # Stream was cancelled during close() - don't log as error
+                exception = ZerobusException(f"Error happened in sending records: {e}")
+            else:
+                exception = log_and_get_exception(e)
         except Exception as e:
             if not self.__stop_event.is_set():
                 logger.error(f"Error in sender: {str(e)}")
@@ -609,7 +614,12 @@ class ZerobusStream:
             if not created_stream_success:
                 exception = e
                 return
-            exception = log_and_get_exception(e)
+            # Only log if the stream is not being intentionally stopped
+            if self.__stop_event.is_set() and e.code() == grpc.StatusCode.CANCELLED:
+                # Stream was cancelled during close() - don't log as error
+                exception = ZerobusException(f"Error happened in receiving records: {e}")
+            else:
+                exception = log_and_get_exception(e)
         except Exception as e:
             logger.error(f"Error happened in receiving records: {str(e)}")
             exception = ZerobusException(f"Error happened in receiving records: {str(e)}")
