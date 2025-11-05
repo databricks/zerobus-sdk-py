@@ -32,11 +32,12 @@ Examples:
 
 Type mappings:
     Delta            -> Proto2
+    TINYINT/BYTE     -> int32
+    SMALLINT/SHORT   -> int32
     INT              -> int32
+    BIGINT/LONG      -> int64
     STRING           -> string
     FLOAT            -> float
-    LONG             -> int64
-    SHORT            -> int32
     DOUBLE           -> double
     BOOLEAN          -> bool
     BINARY           -> bytes
@@ -216,7 +217,7 @@ def parse_array_type(column_type: str) -> Optional[str]:
     """
     match = re.match(r"^ARRAY<(.+)>$", column_type.upper())
     if match:
-        return match.group(1).strip()
+        return column_type[6:-1].strip()
     return None
 
 
@@ -398,6 +399,8 @@ def get_proto_field_info(
 
     # Base scalar types
     type_mapping = {
+        "TINYINT": "int32",
+        "BYTE": "int32",
         "SMALLINT": "int32",
         "SHORT": "int32",
         "INT": "int32",
@@ -424,7 +427,11 @@ def get_proto_field_info(
     if element_type is not None:
         # Check for nested arrays (not supported)
         if parse_array_type(element_type) is not None:
-            raise ValueError(f"Direct nested arrays are not supported: {element_type}")
+            raise ValueError("Nested arrays are not supported: array<array<...>>")
+
+        # Check for array of maps (not supported)
+        if parse_map_type(element_type) is not None:
+            raise ValueError("Arrays of maps are not supported: array<map<...>>")
 
         modifier, elem_proto_type, nested_def = get_proto_field_info(
             field_name, element_type, False, struct_counter, level + 1
@@ -435,6 +442,14 @@ def get_proto_field_info(
     map_types = parse_map_type(column_type)
     if map_types is not None:
         key_type, value_type = map_types
+
+        # Protobuf map keys cannot be maps
+        if parse_map_type(key_type) is not None:
+            raise ValueError("Maps with map keys are not supported: map<map<...>, ...>")
+
+        # Protobuf map keys cannot be arrays
+        if parse_array_type(key_type) is not None:
+            raise ValueError("Maps with array keys are not supported: map<array<...>, ...>")
 
         # Protobuf map keys must be integral or string types
         _, key_proto_type, key_nested_def = get_proto_field_info(field_name, key_type, False, struct_counter, level + 1)
@@ -459,7 +474,11 @@ def get_proto_field_info(
 
         # Protobuf map values cannot be other maps
         if parse_map_type(value_type) is not None:
-            raise ValueError(f"Protobuf does not support nested maps. Found in: {column_type}")
+            raise ValueError("Maps with map values are not supported: map<..., map<...>>")
+
+        # Protobuf map values cannot be arrays
+        if parse_array_type(value_type) is not None:
+            raise ValueError("Maps with array values are not supported: map<..., array<...>>")
 
         _, value_proto_type, value_nested_def = get_proto_field_info(
             field_name, value_type, False, struct_counter, level + 1

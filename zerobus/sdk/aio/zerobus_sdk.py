@@ -75,6 +75,7 @@ class ZerobusStream:
         backoff_seconds = (self._options.recovery_backoff_ms / 1000) if self._options.recovery else 0
 
         for attempt in range(max_attempts):
+            logger.info(f"Attempting retry {attempt} out of {max_attempts}")
             try:
                 try:
                     await asyncio.wait_for(func(), timeout=timeout_seconds)
@@ -149,6 +150,7 @@ class ZerobusStream:
     async def _initialize(self):
         # Asynchronous initialization method for ZerobusStream. Must be called before using the stream.
         try:
+            logger.info("Starting initializing stream")
             max_attempts = self._options.recovery_retries if self._options.recovery else 1
             await self.__with_retries(self.__create_stream, max_attempts)
             await self.__set_state(StreamState.OPENED)
@@ -271,9 +273,13 @@ class ZerobusStream:
             err_msg = str(exception) if exception is not None else "Stream closed unexpectedly!"
             self.__stream_failure_info.log_failure(failure_type)
 
-            if (self.__state == StreamState.OPENED or self.__state == StreamState.FLUSHING) and not isinstance(
-                exception, NonRetriableException
-            ):
+            should_recover = (
+                (self.__state == StreamState.OPENED or self.__state == StreamState.FLUSHING)
+                and not isinstance(exception, NonRetriableException)
+                and self._options.recovery
+            )
+
+            if should_recover:
                 # Set the state to recovering
                 # This is to prevent the stream from being closed multiple times
                 self.__state = StreamState.RECOVERING
@@ -281,12 +287,15 @@ class ZerobusStream:
                 if recovered:
                     # Stream recovered successfully
                     return
+                # Recovery failed
+                logger.error(f"Stream failed permanently after failed recovery attempt: {err_msg}")
+            else:
+                # Non-recoverable error
+                logger.error(f"Stream closed due to a non-recoverable error: {err_msg}")
 
             # Close the stream for new events
             await self.__set_state(StreamState.FAILED)
             await self.__close(hard_failure=True, err_msg=err_msg)
-
-            logger.error(f"Stream closed due to an error: {err_msg}")
         finally:
             self.__error_handling_in_progress = False
 
@@ -312,6 +321,7 @@ class ZerobusStream:
 
         try:
             # 1. CREATE STREAM
+            logger.info("Sending CreateIngestStreamRequest to gRPC stream")
             create_stream_request = zerobus_service_pb2.CreateIngestStreamRequest(
                 table_name=self._table_properties.table_name.encode("utf-8"),
                 record_type=self._options.record_type.value,
@@ -324,6 +334,7 @@ class ZerobusStream:
                 )
 
             yield zerobus_service_pb2.EphemeralStreamRequest(create_stream=create_stream_request)
+            logger.info("Waiting for CreateIngestStreamResponse")
             await self.__wait_for_stream_to_finish_initialization()
             stream_id = self.stream_id
 
@@ -414,7 +425,12 @@ class ZerobusStream:
         except asyncio.CancelledError as e:
             exception = e
         except grpc.RpcError as e:
-            exception = log_and_get_exception(e)
+            # Check if this is a CANCELLED error due to intentional stream closure
+            if self.__state == StreamState.CLOSED and e.code() == grpc.StatusCode.CANCELLED:
+                # Stream was cancelled during close() - don't log as error
+                exception = ZerobusException(f"Error happened in sending records: {e}")
+            else:
+                exception = log_and_get_exception(e)
         except Exception as e:
             logger.error(f"Error happened in sending records: {str(e)}")
             exception = ZerobusException(f"Error happened in sending records: {str(e)}")
@@ -482,7 +498,12 @@ class ZerobusStream:
         except asyncio.CancelledError as e:
             exception = e
         except grpc.RpcError as e:
-            exception = log_and_get_exception(e)
+            # Check if this is a CANCELLED error due to intentional stream closure
+            if self.__state == StreamState.CLOSED and e.code() == grpc.StatusCode.CANCELLED:
+                # Stream was cancelled during close() - don't log as error
+                exception = ZerobusException(f"Error happened in receiving records: {e}")
+            else:
+                exception = log_and_get_exception(e)
         except Exception as e:
             logger.error(f"Error happened in receiving records: {str(e)}")
             exception = ZerobusException(f"Error happened in receiving records: {str(e)}")
