@@ -4,8 +4,9 @@ Asynchronous Ingestion Example - JSON Mode
 This example demonstrates record ingestion using the asynchronous API with JSON serialization.
 
 Record Type Mode: JSON
-  - Records are sent as JSON-encoded strings
+  - Records are sent as Python dictionaries
   - Uses RecordType.JSON to specify JSON serialization
+  - The SDK handles JSON serialization internally
   - Best for dynamic schemas or when working with JSON data
 
 Use Case: Best for applications already using asyncio, async web frameworks (FastAPI, aiohttp),
@@ -20,7 +21,6 @@ Choose based on your application's architecture, not performance requirements.
 """
 
 import asyncio
-import json
 import logging
 import os
 import time
@@ -58,12 +58,12 @@ NUM_RECORDS = 1000
 
 def create_sample_json_record(index):
     """
-    Creates a sample AirQuality record as a JSON string.
+    Creates a sample AirQuality record as a dictionary.
 
-    With JSON mode, records are plain JSON strings that match your schema.
+    With JSON mode, records are Python dicts that match your schema.
+    The SDK handles JSON serialization internally.
     """
-    record_dict = {"device_name": f"sensor-{index % 10}", "temp": 20 + (index % 15), "humidity": 50 + (index % 40)}
-    return json.dumps(record_dict)
+    return {"device_name": f"sensor-{index % 10}", "temp": 20 + (index % 15), "humidity": 50 + (index % 40)}
 
 
 class CustomHeadersProvider(HeadersProvider):
@@ -172,7 +172,7 @@ async def main():
             futures = []
 
             for i in range(NUM_RECORDS):
-                # Create a JSON record (as a string)
+                # Create a JSON record (as a dict)
                 json_record = create_sample_json_record(i)
 
                 # Ingest record asynchronously

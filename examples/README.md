@@ -71,14 +71,14 @@ ack = stream.ingest_record(record)
 #### JSON
 **Files:** `sync_example_json.py`, `async_example_json.py`
 
-Good for getting started. Send records as JSON-encoded strings. No protobuf schema required.
+Good for getting started. Send records as Python dicts. No protobuf schema required. The SDK handles JSON serialization internally.
 
 ```python
 # Create and ingest JSON record
-json_record = json.dumps({"device_name": "sensor-1", "temp": 25, "humidity": 60})
+record = {"device_name": "sensor-1", "temp": 25, "humidity": 60}
 table_properties = TableProperties(TABLE_NAME)
 options = StreamConfigurationOptions(record_type=RecordType.JSON)
-ack = stream.ingest_record(json_record)
+ack = stream.ingest_record(record)
 ```
 
 ### Synchronous vs Asynchronous APIs
@@ -131,7 +131,7 @@ Both APIs provide the same functionality and performance. The key differences ar
 | Format | Record Input | Configuration |
 |--------|-------------|---------------|
 | **Protobuf** (Default) | Protobuf object or bytes | `TableProperties(table_name, descriptor)` |
-| **JSON** | JSON string | `TableProperties(table_name)` + `StreamConfigurationOptions(record_type=RecordType.JSON)` |
+| **JSON** | Python dict | `TableProperties(table_name)` + `StreamConfigurationOptions(record_type=RecordType.JSON)` |
 
 ## Authentication
 
@@ -154,14 +154,14 @@ To use your own protobuf schema:
 
 To use your own JSON structure:
 
-1. Define your JSON structure in code:
+1. Define your record as a Python dict:
    ```python
-   json_record = json.dumps({"field1": "value1", "field2": 123})
+   record = {"field1": "value1", "field2": 123}
    ```
 2. Configure `StreamConfigurationOptions` with `record_type=RecordType.JSON`
-3. Ensure your JSON structure matches the schema of your Databricks table
+3. Ensure your dict structure matches the schema of your Databricks table
 
-Note: The SDK sends JSON strings directly without client-side schema validation.
+Note: The SDK serializes dicts to JSON internally without client-side schema validation.
 
 ## Additional Resources
 
