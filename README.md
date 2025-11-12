@@ -149,7 +149,6 @@ The SDK supports two serialization formats:
 **Synchronous Example:**
 
 ```python
-import json
 import logging
 from zerobus.sdk.sync import ZerobusSdk
 from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
@@ -187,15 +186,14 @@ stream = sdk.create_stream(client_id, client_secret, table_properties, options)
 try:
     # Ingest records
     for i in range(100):
-        # Create JSON record
-        record_dict = {
+        # Create JSON record as a dict (SDK handles serialization)
+        record = {
             "device_name": f"sensor-{i % 10}",
             "temp": 20 + (i % 15),
             "humidity": 50 + (i % 40)
         }
-        json_record = json.dumps(record_dict)
 
-        ack = stream.ingest_record(json_record)
+        ack = stream.ingest_record(record)
         ack.wait_for_ack()  # Optional: Wait for durability confirmation
 
         print(f"Ingested record {i + 1}")
@@ -209,7 +207,6 @@ finally:
 
 ```python
 import asyncio
-import json
 import logging
 from zerobus.sdk.aio import ZerobusSdk
 from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
@@ -248,15 +245,14 @@ async def main():
     try:
         # Ingest records
         for i in range(100):
-            # Create JSON record
-            record_dict = {
+            # Create JSON record as a dict (SDK handles serialization)
+            record = {
                 "device_name": f"sensor-{i % 10}",
                 "temp": 20 + (i % 15),
                 "humidity": 50 + (i % 40)
             }
-            json_record = json.dumps(record_dict)
 
-            future = await stream.ingest_record(json_record)
+            future = await stream.ingest_record(record)
             await future  # Optional: Wait for durability confirmation
 
             print(f"Ingested record {i + 1}")
@@ -475,14 +471,13 @@ stream = sdk.create_stream(client_id, client_secret, table_properties, options)
 
 try:
     for i in range(1000):
-        record_dict = {
+        record = {
             "device_name": f"sensor-{i}",
             "temp": 20 + i % 15,
             "humidity": 50 + i % 40
         }
-        json_record = json.dumps(record_dict)
 
-        ack = stream.ingest_record(json_record)
+        ack = stream.ingest_record(record)
         ack.wait_for_ack()  # Optional: Wait for durability confirmation
 finally:
     stream.close()
@@ -492,7 +487,6 @@ finally:
 
 ```python
 import asyncio
-import json
 import logging
 from zerobus.sdk.aio import ZerobusSdk
 from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
@@ -515,14 +509,13 @@ async def main():
     futures = []
     try:
         for i in range(100000):
-            record_dict = {
+            record = {
                 "device_name": f"sensor-{i % 10}",
                 "temp": 20 + i % 15,
                 "humidity": 50 + i % 40
             }
-            json_record = json.dumps(record_dict)
 
-            future = await stream.ingest_record(json_record)
+            future = await stream.ingest_record(record)
             futures.append(future)
 
         await stream.flush()
@@ -829,9 +822,9 @@ Represents an active ingestion stream.
 **Synchronous Methods:**
 
 ```python
-def ingest_record(record: Union[str, bytes, Message]) -> RecordAcknowledgment
+def ingest_record(record: Union[dict, bytes, Message]) -> RecordAcknowledgment
 ```
-Ingests a single record. Pass a JSON string (JSON mode) or protobuf message/bytes (protobuf mode). Returns a `RecordAcknowledgment` for tracking.
+Ingests a single record. Pass a dict (JSON mode) or protobuf message/bytes (protobuf mode). Returns a `RecordAcknowledgment` for tracking.
 
 ```python
 def flush() -> None
@@ -859,9 +852,9 @@ Returns the unique stream ID assigned by the server.
 **Asynchronous Methods:**
 
 ```python
-async def ingest_record(record: Union[str, bytes, Message]) -> Awaitable
+async def ingest_record(record: Union[dict, bytes, Message]) -> Awaitable
 ```
-Ingests a single record. Pass a JSON string (JSON mode) or protobuf message/bytes (protobuf mode). Returns an awaitable that completes when the record is durably written.
+Ingests a single record. Pass a dict (JSON mode) or protobuf message/bytes (protobuf mode). Returns an awaitable that completes when the record is durably written.
 
 ```python
 async def flush() -> None
