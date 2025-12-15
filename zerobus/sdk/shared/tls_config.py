@@ -26,19 +26,28 @@ class TlsConfig(ABC):
 class SecureTlsConfig(TlsConfig):
     """Secure TLS configuration using system CA certificates.
 
-    This is the default and recommended configuration for production use.
-    It enables TLS encryption using the operating system's trusted CA certificates.
+    This is the default configuration, enabling TLS encryption using
+    the operating system's trusted CA certificates.
 
     Examples:
         >>> from zerobus.sdk.shared.tls_config import SecureTlsConfig
         >>>
+        >>> # Explicit usage (functionally identical to default)
         >>> tls = SecureTlsConfig()
         >>> stream = sdk.create_stream(
-        ...     table_properties,
         ...     client_id,
         ...     client_secret,
+        ...     table_properties,
         ...     options,
         ...     tls_config=tls
+        ... )
+        >>>
+        >>> # Default usage (SecureTlsConfig is used automatically)
+        >>> stream = sdk.create_stream(
+        ...     client_id,
+        ...     client_secret,
+        ...     table_properties,
+        ...     options
         ... )
     """
 
