@@ -9,6 +9,7 @@ from . import sync
 from .shared import (NonRetriableException, RecordType,
                      StreamConfigurationOptions, StreamState, TableProperties,
                      ZerobusException)
+from .shared.tls_config import TlsConfig, SecureTlsConfig
 
 ZerobusSdk = sync.ZerobusSdk
 ZerobusStream = sync.ZerobusStream
@@ -24,4 +25,6 @@ __all__ = [
     "ZerobusException",
     "NonRetriableException",
     "StreamState",
+    "TlsConfig",
+    "SecureTlsConfig",
 ]

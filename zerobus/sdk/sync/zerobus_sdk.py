@@ -17,6 +17,7 @@ from ..shared import (NOT_RETRIABLE_GRPC_CODES, NonRetriableException,
                       _StreamFailureType, log_and_get_exception,
                       zerobus_service_pb2, zerobus_service_pb2_grpc)
 from ..shared.headers_provider import HeadersProvider, OAuthHeadersProvider
+from ..shared.tls_config import TlsConfig, SecureTlsConfig
 
 logger = logging.getLogger("zerobus_sdk")
 
@@ -130,11 +131,13 @@ class ZerobusStream:
         table_properties: TableProperties,
         options: StreamConfigurationOptions,
         grpc_channel: grpc.Channel,
+        tls_config: TlsConfig,
     ):
         self.__stub = stub
         self._headers_provider = headers_provider
         self._table_properties = table_properties
         self._options = options
+        self._tls_config = tls_config
 
         self.__record_queue = queue.Queue(maxsize=0)
         self.__inflight_records_tokens = queue.Queue(maxsize=self._options.max_inflight_records)
@@ -864,39 +867,23 @@ class ZerobusSdk:
         client_secret: str,
         table_properties: TableProperties,
         options: StreamConfigurationOptions = StreamConfigurationOptions(),
+        tls_config: Optional[TlsConfig] = None,
+        headers_provider: Optional[HeadersProvider] = None,
     ) -> ZerobusStream:
         """
         Creates, initializes, and returns a new ingestion stream.
 
         Args:
-            client_id (str): The client ID.
-            client_secret (str): The client secret.
+            client_id (str): The client ID (ignored if headers_provider is provided).
+            client_secret (str): The client secret (ignored if headers_provider is provided).
             table_properties (TableProperties): The properties of the target table,
                 including its name and schema.
             options (StreamConfigurationOptions): Optional configuration for the stream's
                 behavior, such as recovery settings.
-
-        Returns:
-            ZerobusStream: An initialized and active stream instance.
-        """
-        headers_provider = OAuthHeadersProvider(
-            self.__workspace_id, self.__unity_catalog_url, table_properties.table_name, client_id, client_secret
-        )
-        return self.create_stream_with_headers_provider(headers_provider, table_properties, options)
-
-    def create_stream_with_headers_provider(
-        self,
-        headers_provider: HeadersProvider,
-        table_properties: TableProperties,
-        options: StreamConfigurationOptions = StreamConfigurationOptions(),
-    ) -> ZerobusStream:
-        """
-        Creates, initializes, and returns a new ingestion stream using a custom headers provider.
-
-        Args:
-            headers_provider: The headers provider.
-            table_properties: The properties of the target table.
-            options: The options for the stream.
+            tls_config (Optional[TlsConfig]): Optional TLS configuration. If not provided,
+                uses SecureTlsConfig (TLS with system CAs).
+            headers_provider (Optional[HeadersProvider]): Optional custom headers provider
+                for authentication. If not provided, uses OAuth with client_id and client_secret.
 
         Returns:
             ZerobusStream: An initialized and active stream instance.
@@ -912,9 +899,22 @@ class ZerobusSdk:
             if table_properties.descriptor_proto is not None:
                 logger.warning("descriptor_proto provided for JSON stream will be ignored")
 
+        # Use provided headers_provider or create OAuth provider
+        if headers_provider is None:
+            headers_provider = OAuthHeadersProvider(
+                self.__workspace_id, self.__unity_catalog_url, table_properties.table_name, client_id, client_secret
+            )
+
+        # Use SecureTlsConfig as default if not provided
+        if tls_config is None:
+            tls_config = SecureTlsConfig()
+
+        # Get channel credentials from TLS configuration
+        channel_credentials = tls_config.to_channel_credentials()
+
         channel = grpc.secure_channel(
             self.__host,
-            grpc.ssl_channel_credentials(),
+            channel_credentials,
             options=[("grpc.max_send_message_length", -1), ("grpc.max_receive_message_length", -1)],
         )
 
@@ -925,6 +925,7 @@ class ZerobusSdk:
             table_properties,
             options,
             channel,
+            tls_config,
         )
         stream._initialize()
         return stream
@@ -949,8 +950,13 @@ class ZerobusSdk:
         if old_stream_state != StreamState.CLOSED and old_stream_state != StreamState.FAILED:
             raise ZerobusException("Stream is not closed. Cannot create new stream.")
 
-        new_stream = self.create_stream_with_headers_provider(
-            old_stream._headers_provider, old_stream._table_properties, old_stream._options
+        new_stream = self.create_stream(
+            "",
+            "",
+            old_stream._table_properties,
+            old_stream._options,
+            old_stream._tls_config,
+            old_stream._headers_provider,
         )
 
         unacked_records = old_stream.get_unacked_records()
