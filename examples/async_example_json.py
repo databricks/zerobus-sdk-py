@@ -25,12 +25,13 @@ import logging
 import os
 import time
 
+import grpc
+
 from zerobus.sdk.aio import ZerobusSdk
 from zerobus.sdk.shared import (RecordType, StreamConfigurationOptions,
                                 TableProperties)
 from zerobus.sdk.shared.headers_provider import HeadersProvider
 from zerobus.sdk.shared.tls_config import TlsConfig
-import grpc
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -113,7 +114,7 @@ class CustomTlsConfig(TlsConfig):
         return grpc.ssl_channel_credentials(
             root_certificates=self.root_certificates,
             private_key=self.private_key,
-            certificate_chain=self.certificate_chain
+            certificate_chain=self.certificate_chain,
         )
 
 

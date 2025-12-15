@@ -4,6 +4,7 @@ This module provides a strategy pattern for TLS configuration.
 """
 
 from abc import ABC, abstractmethod
+
 import grpc
 
 
@@ -20,7 +21,6 @@ class TlsConfig(ABC):
         Returns:
             grpc.ChannelCredentials: Channel credentials for secure connection
         """
-        pass
 
 
 class SecureTlsConfig(TlsConfig):

@@ -7,12 +7,15 @@ import asyncio
 import unittest
 from unittest.mock import patch
 
+import grpc
+
 import tests.row_pb2 as test_row_pb2
 from tests.mock_grpc import (InjectedRecordResponse, MockGrpcChannel,
                              SdkManager, for_both_sdks)
 from zerobus.sdk import (StreamConfigurationOptions, StreamState,
                          TableProperties, ZerobusException)
 from zerobus.sdk.shared.headers_provider import HeadersProvider
+from zerobus.sdk.shared.tls_config import TlsConfig
 
 SERVER_ENDPOINT = "SERVER_ENDPOINT"
 TABLE_NAME = "catalog.schema.test_table"
@@ -45,6 +48,27 @@ class CustomHeadersProviderForTest(HeadersProvider):
             ("authorization", f"Bearer {self.token}"),
             ("x-databricks-zerobus-table-name", self.table_name),
         ]
+
+
+class CustomTlsConfigForTest(TlsConfig):
+    """
+    Custom TLS configuration for testing.
+
+    This demonstrates that the custom TLS config API works correctly.
+    For testing purposes, this returns standard SSL credentials.
+    """
+
+    def __init__(self, root_certificates=None):
+        self.root_certificates = root_certificates
+
+    def to_channel_credentials(self) -> grpc.ChannelCredentials:
+        """
+        Convert TLS configuration to gRPC ChannelCredentials.
+
+        Returns:
+            grpc.ChannelCredentials: SSL channel credentials
+        """
+        return grpc.ssl_channel_credentials(root_certificates=self.root_certificates)
 
 
 class TestZerobusSdkBasic(unittest.IsolatedAsyncioTestCase):
@@ -486,8 +510,10 @@ class TestZerobusSdkBasic(unittest.IsolatedAsyncioTestCase):
             sdk_instance = ZerobusSdkAsync(SERVER_ENDPOINT, unity_catalog_url="https://test.unity.catalog.url")
             table_props = TableProperties(TABLE_NAME, test_row_pb2.AirQuality.DESCRIPTOR)
 
-            # Use create_stream_with_headers_provider instead of create_stream
-            stream = await sdk_instance.create_stream_with_headers_provider(custom_provider, table_props, self.options)
+            # Use create_stream with headers_provider parameter
+            stream = await sdk_instance.create_stream(
+                "client_id", "client_secret", table_props, self.options, headers_provider=custom_provider
+            )
 
             # Verify stream was created successfully
             self.assertIsNotNone(stream)
@@ -538,8 +564,10 @@ class TestZerobusSdkBasic(unittest.IsolatedAsyncioTestCase):
             sdk_instance = ZerobusSdkSync(SERVER_ENDPOINT, unity_catalog_url="https://test.unity.catalog.url")
             table_props = TableProperties(TABLE_NAME, test_row_pb2.AirQuality.DESCRIPTOR)
 
-            # Use create_stream_with_headers_provider instead of create_stream
-            stream = sdk_instance.create_stream_with_headers_provider(custom_provider, table_props, self.options)
+            # Use create_stream with headers_provider parameter
+            stream = sdk_instance.create_stream(
+                "client_id", "client_secret", table_props, self.options, headers_provider=custom_provider
+            )
 
             # Verify stream was created successfully
             self.assertIsNotNone(stream)
@@ -556,6 +584,378 @@ class TestZerobusSdkBasic(unittest.IsolatedAsyncioTestCase):
 
         if mock_grpc_stream:
             mock_grpc_stream.cancel()
+
+    async def test_create_stream_with_custom_tls_config_async(self):
+        """Test creating async stream with custom TLS config and OAuth-like headers."""
+        from zerobus.sdk.aio import ZerobusSdk as ZerobusSdkAsync
+
+        calls_count = 0
+        mock_grpc_stream = None
+
+        def create_ephemeral_stream(generator, **kwargs):
+            nonlocal calls_count, mock_grpc_stream
+            calls_count += 1
+            from tests.mock_grpc import MockAsyncStream
+
+            mock_grpc_stream = MockAsyncStream(calls_count, generator)
+            mock_grpc_stream.inject_response(False, InjectedRecordResponse(0, timeout_ms=10))
+            return mock_grpc_stream
+
+        mock_channel = MockGrpcChannel()
+        mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
+
+        with patch("grpc.aio.secure_channel", return_value=mock_channel):
+            # Create custom TLS config and OAuth-like headers provider
+            custom_tls = CustomTlsConfigForTest()
+            # Use headers provider that mimics OAuth to avoid making real HTTP requests
+            oauth_like_provider = CustomHeadersProviderForTest(token="test_token", table_name=TABLE_NAME)
+
+            # Create SDK and stream using custom TLS
+            sdk_instance = ZerobusSdkAsync(SERVER_ENDPOINT, unity_catalog_url="https://test.unity.catalog.url")
+            table_props = TableProperties(TABLE_NAME, test_row_pb2.AirQuality.DESCRIPTOR)
+
+            # Use create_stream with custom TLS and OAuth-like headers
+            stream = await sdk_instance.create_stream(
+                "client_id",
+                "client_secret",
+                table_props,
+                self.options,
+                tls_config=custom_tls,
+                headers_provider=oauth_like_provider,
+            )
+
+            # Verify stream was created successfully
+            self.assertIsNotNone(stream)
+            self.assertEqual(stream.get_state(), StreamState.OPENED)
+
+            # Test basic ingestion
+            ack = await stream.ingest_record(test_row_pb2.AirQuality(device_name="device", temp=17, humidity=42))
+            offset = await ack
+
+            self.assertEqual(offset, 0)
+
+            # Close stream
+            await stream.close()
+
+        if mock_grpc_stream:
+            mock_grpc_stream.cancel()
+
+    def test_create_stream_with_custom_tls_config_sync(self):
+        """Test creating sync stream with custom TLS config and OAuth-like headers."""
+        from zerobus.sdk.sync import ZerobusSdk as ZerobusSdkSync
+
+        calls_count = 0
+        mock_grpc_stream = None
+
+        def create_ephemeral_stream(generator, **kwargs):
+            nonlocal calls_count, mock_grpc_stream
+            calls_count += 1
+            from tests.mock_grpc import MockSyncStream
+
+            mock_grpc_stream = MockSyncStream(calls_count, generator)
+            mock_grpc_stream.inject_response(False, InjectedRecordResponse(0, timeout_ms=10))
+            return mock_grpc_stream
+
+        mock_channel = MockGrpcChannel()
+        mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
+
+        with patch("grpc.secure_channel", return_value=mock_channel):
+            # Create custom TLS config and OAuth-like headers provider
+            custom_tls = CustomTlsConfigForTest()
+            # Use headers provider that mimics OAuth to avoid making real HTTP requests
+            oauth_like_provider = CustomHeadersProviderForTest(token="test_token", table_name=TABLE_NAME)
+
+            # Create SDK and stream using custom TLS
+            sdk_instance = ZerobusSdkSync(SERVER_ENDPOINT, unity_catalog_url="https://test.unity.catalog.url")
+            table_props = TableProperties(TABLE_NAME, test_row_pb2.AirQuality.DESCRIPTOR)
+
+            # Use create_stream with custom TLS and OAuth-like headers
+            stream = sdk_instance.create_stream(
+                "client_id",
+                "client_secret",
+                table_props,
+                self.options,
+                tls_config=custom_tls,
+                headers_provider=oauth_like_provider,
+            )
+
+            # Verify stream was created successfully
+            self.assertIsNotNone(stream)
+            self.assertEqual(stream.get_state(), StreamState.OPENED)
+
+            # Test basic ingestion
+            ack = stream.ingest_record(test_row_pb2.AirQuality(device_name="device", temp=17, humidity=42))
+            offset = ack.wait_for_ack()
+
+            self.assertEqual(offset, 0)
+
+            # Close stream
+            stream.close()
+
+        if mock_grpc_stream:
+            mock_grpc_stream.cancel()
+
+    async def test_create_stream_with_both_custom_tls_and_headers_async(self):
+        """Test creating async stream with both custom TLS config and custom headers provider."""
+        from zerobus.sdk.aio import ZerobusSdk as ZerobusSdkAsync
+
+        calls_count = 0
+        mock_grpc_stream = None
+
+        def create_ephemeral_stream(generator, **kwargs):
+            nonlocal calls_count, mock_grpc_stream
+            calls_count += 1
+            from tests.mock_grpc import MockAsyncStream
+
+            mock_grpc_stream = MockAsyncStream(calls_count, generator)
+            mock_grpc_stream.inject_response(False, InjectedRecordResponse(0, timeout_ms=10))
+            return mock_grpc_stream
+
+        mock_channel = MockGrpcChannel()
+        mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
+
+        with patch("grpc.aio.secure_channel", return_value=mock_channel):
+            # Create custom TLS config and headers provider
+            custom_tls = CustomTlsConfigForTest()
+            custom_provider = CustomHeadersProviderForTest(token="test_token", table_name=TABLE_NAME)
+
+            # Create SDK and stream using both custom TLS and headers
+            sdk_instance = ZerobusSdkAsync(SERVER_ENDPOINT, unity_catalog_url="https://test.unity.catalog.url")
+            table_props = TableProperties(TABLE_NAME, test_row_pb2.AirQuality.DESCRIPTOR)
+
+            # Use create_stream with both parameters
+            stream = await sdk_instance.create_stream(
+                "client_id",
+                "client_secret",
+                table_props,
+                self.options,
+                tls_config=custom_tls,
+                headers_provider=custom_provider,
+            )
+
+            # Verify stream was created successfully
+            self.assertIsNotNone(stream)
+            self.assertEqual(stream.get_state(), StreamState.OPENED)
+
+            # Test basic ingestion
+            ack = await stream.ingest_record(test_row_pb2.AirQuality(device_name="device", temp=17, humidity=42))
+            offset = await ack
+
+            self.assertEqual(offset, 0)
+
+            # Close stream
+            await stream.close()
+
+        if mock_grpc_stream:
+            mock_grpc_stream.cancel()
+
+    def test_create_stream_with_both_custom_tls_and_headers_sync(self):
+        """Test creating sync stream with both custom TLS config and custom headers provider."""
+        from zerobus.sdk.sync import ZerobusSdk as ZerobusSdkSync
+
+        calls_count = 0
+        mock_grpc_stream = None
+
+        def create_ephemeral_stream(generator, **kwargs):
+            nonlocal calls_count, mock_grpc_stream
+            calls_count += 1
+            from tests.mock_grpc import MockSyncStream
+
+            mock_grpc_stream = MockSyncStream(calls_count, generator)
+            mock_grpc_stream.inject_response(False, InjectedRecordResponse(0, timeout_ms=10))
+            return mock_grpc_stream
+
+        mock_channel = MockGrpcChannel()
+        mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
+
+        with patch("grpc.secure_channel", return_value=mock_channel):
+            # Create custom TLS config and headers provider
+            custom_tls = CustomTlsConfigForTest()
+            custom_provider = CustomHeadersProviderForTest(token="test_token", table_name=TABLE_NAME)
+
+            # Create SDK and stream using both custom TLS and headers
+            sdk_instance = ZerobusSdkSync(SERVER_ENDPOINT, unity_catalog_url="https://test.unity.catalog.url")
+            table_props = TableProperties(TABLE_NAME, test_row_pb2.AirQuality.DESCRIPTOR)
+
+            # Use create_stream with both parameters
+            stream = sdk_instance.create_stream(
+                "client_id",
+                "client_secret",
+                table_props,
+                self.options,
+                tls_config=custom_tls,
+                headers_provider=custom_provider,
+            )
+
+            # Verify stream was created successfully
+            self.assertIsNotNone(stream)
+            self.assertEqual(stream.get_state(), StreamState.OPENED)
+
+            # Test basic ingestion
+            ack = stream.ingest_record(test_row_pb2.AirQuality(device_name="device", temp=17, humidity=42))
+            offset = ack.wait_for_ack()
+
+            self.assertEqual(offset, 0)
+
+            # Close stream
+            stream.close()
+
+        if mock_grpc_stream:
+            mock_grpc_stream.cancel()
+
+    async def test_recreate_stream_preserves_tls_and_headers_async(self):
+        """Test that recreate_stream preserves both TLS config and headers provider."""
+        from zerobus.sdk.aio import ZerobusSdk as ZerobusSdkAsync
+
+        calls_count = 0
+        mock_grpc_streams = []
+
+        def create_ephemeral_stream(generator, **kwargs):
+            nonlocal calls_count
+            calls_count += 1
+            from tests.mock_grpc import MockAsyncStream
+
+            mock_stream = MockAsyncStream(calls_count, generator)
+            # Each stream starts with offset 0
+            mock_stream.inject_response(False, InjectedRecordResponse(0, timeout_ms=10))
+            mock_grpc_streams.append(mock_stream)
+            return mock_stream
+
+        mock_channel = MockGrpcChannel()
+        mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
+
+        with patch("grpc.aio.secure_channel", return_value=mock_channel):
+            # Create custom TLS config and headers provider
+            custom_tls = CustomTlsConfigForTest()
+            custom_provider = CustomHeadersProviderForTest(token="test_token", table_name=TABLE_NAME)
+
+            # Create SDK and initial stream
+            sdk_instance = ZerobusSdkAsync(SERVER_ENDPOINT, unity_catalog_url="https://test.unity.catalog.url")
+            table_props = TableProperties(TABLE_NAME, test_row_pb2.AirQuality.DESCRIPTOR)
+
+            # Disable recovery for this test to manually control stream lifecycle
+            options = StreamConfigurationOptions(recovery=False, token_factory=token_factory)
+
+            stream = await sdk_instance.create_stream(
+                "client_id",
+                "client_secret",
+                table_props,
+                options,
+                tls_config=custom_tls,
+                headers_provider=custom_provider,
+            )
+
+            # Verify stream was created
+            self.assertIsNotNone(stream)
+            self.assertEqual(stream.get_state(), StreamState.OPENED)
+
+            # Verify the stream has the custom TLS and headers provider saved
+            self.assertIs(stream._tls_config, custom_tls)
+            self.assertIs(stream._headers_provider, custom_provider)
+
+            # Ingest a record to verify stream works
+            ack = await stream.ingest_record(test_row_pb2.AirQuality(device_name="device", temp=17, humidity=42))
+            offset = await ack
+            self.assertEqual(offset, 0)
+
+            # Close the stream
+            await stream.close()
+            self.assertEqual(stream.get_state(), StreamState.CLOSED)
+
+            # Recreate the stream - should preserve TLS and headers
+            new_stream = await sdk_instance.recreate_stream(stream)
+
+            # Verify new stream was created
+            self.assertIsNotNone(new_stream)
+            self.assertEqual(new_stream.get_state(), StreamState.OPENED)
+
+            # Verify new stream preserved the TLS config and headers provider
+            self.assertIs(new_stream._tls_config, custom_tls)
+            self.assertIs(new_stream._headers_provider, custom_provider)
+
+            # Close the new stream
+            await new_stream.close()
+
+        # Clean up mock streams
+        for mock_stream in mock_grpc_streams:
+            mock_stream.cancel()
+
+    def test_recreate_stream_preserves_tls_and_headers_sync(self):
+        """Test that recreate_stream preserves both TLS config and headers provider."""
+        from zerobus.sdk.sync import ZerobusSdk as ZerobusSdkSync
+
+        calls_count = 0
+        mock_grpc_streams = []
+
+        def create_ephemeral_stream(generator, **kwargs):
+            nonlocal calls_count
+            calls_count += 1
+            from tests.mock_grpc import MockSyncStream
+
+            mock_stream = MockSyncStream(calls_count, generator)
+            # Each stream starts with offset 0
+            mock_stream.inject_response(False, InjectedRecordResponse(0, timeout_ms=10))
+            mock_grpc_streams.append(mock_stream)
+            return mock_stream
+
+        mock_channel = MockGrpcChannel()
+        mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
+
+        with patch("grpc.secure_channel", return_value=mock_channel):
+            # Create custom TLS config and headers provider
+            custom_tls = CustomTlsConfigForTest()
+            custom_provider = CustomHeadersProviderForTest(token="test_token", table_name=TABLE_NAME)
+
+            # Create SDK and initial stream
+            sdk_instance = ZerobusSdkSync(SERVER_ENDPOINT, unity_catalog_url="https://test.unity.catalog.url")
+            table_props = TableProperties(TABLE_NAME, test_row_pb2.AirQuality.DESCRIPTOR)
+
+            # Disable recovery for this test to manually control stream lifecycle
+            options = StreamConfigurationOptions(recovery=False, token_factory=token_factory)
+
+            stream = sdk_instance.create_stream(
+                "client_id",
+                "client_secret",
+                table_props,
+                options,
+                tls_config=custom_tls,
+                headers_provider=custom_provider,
+            )
+
+            # Verify stream was created
+            self.assertIsNotNone(stream)
+            self.assertEqual(stream.get_state(), StreamState.OPENED)
+
+            # Verify the stream has the custom TLS and headers provider saved
+            self.assertIs(stream._tls_config, custom_tls)
+            self.assertIs(stream._headers_provider, custom_provider)
+
+            # Ingest a record to verify stream works
+            ack = stream.ingest_record(test_row_pb2.AirQuality(device_name="device", temp=17, humidity=42))
+            offset = ack.wait_for_ack()
+            self.assertEqual(offset, 0)
+
+            # Close the stream
+            stream.close()
+            self.assertEqual(stream.get_state(), StreamState.CLOSED)
+
+            # Recreate the stream - should preserve TLS and headers
+            new_stream = sdk_instance.recreate_stream(stream)
+
+            # Verify new stream was created
+            self.assertIsNotNone(new_stream)
+            self.assertEqual(new_stream.get_state(), StreamState.OPENED)
+
+            # Verify new stream preserved the TLS config and headers provider
+            self.assertIs(new_stream._tls_config, custom_tls)
+            self.assertIs(new_stream._headers_provider, custom_provider)
+
+            # Close the new stream
+            new_stream.close()
+
+        # Clean up mock streams
+        for mock_stream in mock_grpc_streams:
+            mock_stream.cancel()
 
 
 if __name__ == "__main__":

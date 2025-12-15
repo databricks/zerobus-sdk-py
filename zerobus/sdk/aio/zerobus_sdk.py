@@ -14,7 +14,7 @@ from ..shared import (NOT_RETRIABLE_GRPC_CODES, NonRetriableException,
                       _StreamFailureType, log_and_get_exception,
                       zerobus_service_pb2, zerobus_service_pb2_grpc)
 from ..shared.headers_provider import HeadersProvider, OAuthHeadersProvider
-from ..shared.tls_config import TlsConfig, SecureTlsConfig
+from ..shared.tls_config import SecureTlsConfig, TlsConfig
 
 logger = logging.getLogger("zerobus_sdk")
 
