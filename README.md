@@ -37,6 +37,7 @@ The Databricks Zerobus Ingest SDK for Python provides a high-performance client 
 - **Flexible configuration**: Customizable stream behavior and timeouts
 - **Multiple serialization formats**: Support for JSON and Protocol Buffers
 - **OAuth 2.0 authentication**: Secure authentication with client credentials
+- **Configurable TLS**: Custom TLS configuration support for advanced security requirements
 - **Sync and Async support**: Both synchronous and asynchronous APIs
 - **Comprehensive logging**: Detailed logging using Python's standard logging framework
 
@@ -622,63 +623,9 @@ table_properties = TableProperties(table_name, record_pb2.AirQuality.DESCRIPTOR)
 stream = sdk.create_stream(client_id, client_secret, table_properties)
 ```
 
-The SDK automatically fetches access tokens and includes these headers:
-- `"authorization": "Bearer <oauth_token>"` - Obtained via OAuth 2.0 Client Credentials flow
-- `"x-databricks-zerobus-table-name": "<table_name>"` - The fully qualified table name
+The SDK automatically handles OAuth 2.0 authentication and uses secure TLS connections with system CA certificates by default.
 
-### Advanced: Custom Headers
-
-For advanced use cases where you need to provide custom headers (e.g., for future authentication methods or additional metadata), you can implement a custom `HeadersProvider`:
-
-```python
-from zerobus.sdk.shared.headers_provider import HeadersProvider
-
-class CustomHeadersProvider(HeadersProvider):
-    """
-    Custom headers provider for advanced use cases.
-
-    Note: Currently, OAuth 2.0 Client Credentials (via create_stream())
-    is the standard authentication method. Use this only if you have
-    specific requirements for custom headers.
-    
-    IMPORTANT: Custom headers providers MUST include both:
-    - "authorization": "Bearer <token>" header for authentication
-    - "x-databricks-zerobus-table-name": "<table_name>" header for routing
-    """
-
-    def __init__(self, token: str, table_name: str):
-        self.token = token
-        self.table_name = table_name
-
-    def get_headers(self):
-        """
-        Return headers for gRPC metadata.
-
-        Returns:
-            List of (header_name, header_value) tuples
-        """
-        return [
-            ("authorization", f"Bearer {self.token}"),
-            ("x-databricks-zerobus-table-name", self.table_name),
-            ("x-custom-header", "custom-value"),  # Optional: additional custom headers
-        ]
-
-# Use the custom provider
-custom_provider = CustomHeadersProvider(
-    token="your-token",
-    table_name=table_properties.table_name
-)
-stream = sdk.create_stream_with_headers_provider(
-    custom_provider,
-    table_properties
-)
-```
-
-**Potential use cases for custom headers:**
-- Integration with existing token management systems
-- Additional metadata headers for request tracking
-- Future authentication methods
-- Special routing or service mesh requirements
+For advanced use cases requiring custom authentication headers or TLS configuration, see the `HeadersProvider` and `TlsConfig` sections in the API Reference below.
 
 ## Configuration
 
@@ -764,25 +711,26 @@ def create_stream(
     client_id: str,
     client_secret: str,
     table_properties: TableProperties,
-    options: StreamConfigurationOptions = None
+    options: StreamConfigurationOptions = None,
+    tls_config: TlsConfig = None,
+    headers_provider: HeadersProvider = None
 ) -> ZerobusStream
 ```
 Creates a new ingestion stream using OAuth 2.0 Client Credentials authentication.
 
-Automatically includes these headers:
+**Parameters:**
+- `client_id` (str) - OAuth client ID (ignored if `headers_provider` is provided)
+- `client_secret` (str) - OAuth client secret (ignored if `headers_provider` is provided)
+- `table_properties` (TableProperties) - Target table configuration
+- `options` (StreamConfigurationOptions) - Stream behavior configuration (optional)
+- `tls_config` (TlsConfig) - Custom TLS configuration (optional, defaults to `SecureTlsConfig`)
+- `headers_provider` (HeadersProvider) - Custom headers provider (optional, defaults to OAuth)
+
+Automatically includes these headers (when using default OAuth):
 - `"authorization": "Bearer <oauth_token>"` (fetched via OAuth 2.0 Client Credentials flow)
 - `"x-databricks-zerobus-table-name": "<table_name>"`
 
 Returns a `ZerobusStream` instance.
-
-```python
-def create_stream_with_headers_provider(
-    headers_provider: HeadersProvider,
-    table_properties: TableProperties,
-    options: StreamConfigurationOptions = None
-) -> ZerobusStream
-```
-Creates a new ingestion stream using a custom headers provider. For advanced use cases only where custom headers are required. Returns a `ZerobusStream` instance.
 
 ---
 
@@ -800,25 +748,26 @@ async def create_stream(
     client_id: str,
     client_secret: str,
     table_properties: TableProperties,
-    options: StreamConfigurationOptions = None
+    options: StreamConfigurationOptions = None,
+    tls_config: TlsConfig = None,
+    headers_provider: HeadersProvider = None
 ) -> ZerobusStream
 ```
 Creates a new ingestion stream using OAuth 2.0 Client Credentials authentication.
 
-Automatically includes these headers:
+**Parameters:**
+- `client_id` (str) - OAuth client ID (ignored if `headers_provider` is provided)
+- `client_secret` (str) - OAuth client secret (ignored if `headers_provider` is provided)
+- `table_properties` (TableProperties) - Target table configuration
+- `options` (StreamConfigurationOptions) - Stream behavior configuration (optional)
+- `tls_config` (TlsConfig) - Custom TLS configuration (optional, defaults to `SecureTlsConfig`)
+- `headers_provider` (HeadersProvider) - Custom headers provider (optional, defaults to OAuth)
+
+Automatically includes these headers (when using default OAuth):
 - `"authorization": "Bearer <oauth_token>"` (fetched via OAuth 2.0 Client Credentials flow)
 - `"x-databricks-zerobus-table-name": "<table_name>"`
 
 Returns a `ZerobusStream` instance.
-
-```python
-async def create_stream_with_headers_provider(
-    headers_provider: HeadersProvider,
-    table_properties: TableProperties,
-    options: StreamConfigurationOptions = None
-) -> ZerobusStream
-```
-Creates a new ingestion stream using a custom headers provider. For advanced use cases only where custom headers are required. Returns a `ZerobusStream` instance.
 
 ---
 
@@ -914,57 +863,21 @@ table_properties = TableProperties("catalog.schema.table", record_pb2.MyMessage.
 
 ### HeadersProvider
 
-Abstract base class for providing headers to gRPC streams. For advanced use cases only.
+Abstract base class for providing authentication headers to gRPC streams.
 
-**Abstract Method:**
+**Default:** The SDK uses `OAuthHeadersProvider` internally, which handles OAuth 2.0 Client Credentials authentication automatically when you call `create_stream()`.
 
-```python
-@abstractmethod
-def get_headers(self) -> List[Tuple[str, str]]
-```
-Returns headers for gRPC metadata as a list of (header_name, header_value) tuples.
+**Custom Implementation:** For advanced use cases, you can implement a custom `HeadersProvider` by extending the base class and implementing the `get_headers()` method. Custom providers must include both the `authorization` and `x-databricks-zerobus-table-name` headers. See example files for implementation details.
 
-**Built-in Implementation:**
+---
 
-#### OAuthHeadersProvider
+### TlsConfig
 
-OAuth 2.0 Client Credentials flow headers provider (used internally by `create_stream()`).
+Abstract base class for configuring TLS/SSL settings for gRPC connections.
 
-```python
-OAuthHeadersProvider(
-    workspace_id: str,
-    workspace_url: str,
-    table_name: str,
-    client_id: str,
-    client_secret: str
-)
-```
+**Default:** The SDK uses `SecureTlsConfig` with system CA certificates automatically when you call `create_stream()`.
 
-Returns these headers:
-- `"authorization": "Bearer <oauth_token>"` (fetched via OAuth 2.0)
-- `"x-databricks-zerobus-table-name": "<table_name>"`
-
-**Custom Implementation (Advanced):**
-
-For advanced use cases requiring custom headers, extend the `HeadersProvider` class:
-
-```python
-from zerobus.sdk.shared.headers_provider import HeadersProvider
-
-class MyCustomProvider(HeadersProvider):
-    def get_headers(self):
-        return [
-            ("authorization", "Bearer my-token"),  # Required
-            ("x-databricks-zerobus-table-name", "catalog.schema.table"),  # Required
-            ("x-custom-header", "value"),  # Optional: additional custom headers
-        ]
-```
-
-**Important:** Custom headers providers MUST include both required headers:
-- `"authorization"`: Bearer token for authentication
-- `"x-databricks-zerobus-table-name"`: Fully qualified table name for routing
-
-Note: Most users should use `create_stream()` with OAuth credentials rather than implementing a custom provider.
+**Custom Implementation:** For advanced use cases (custom CA certificates, mutual TLS, custom cipher suites), you can implement a custom `TlsConfig` by extending the base class and implementing the `to_channel_credentials()` method. See example files for implementation details.
 
 ---
 

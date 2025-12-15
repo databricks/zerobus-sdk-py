@@ -135,7 +135,9 @@ Both APIs provide the same functionality and performance. The key differences ar
 
 ## Authentication
 
-All examples demonstrate OAuth 2.0 authentication using `create_stream()`. See the inline comments in each example file for details.
+All examples use OAuth 2.0 authentication with `create_stream()`. The SDK automatically handles secure TLS connections using system CA certificates.
+
+Advanced configurations (custom headers, custom TLS) are shown in commented code within each example file.
 
 ## Using Your Own Schema
 
