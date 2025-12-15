@@ -192,7 +192,7 @@ async def main():
         # Advanced: Custom headers provider (for special use cases only)
         # Uncomment to use custom headers instead of OAuth:
         # custom_provider = CustomHeadersProvider(custom_token="your-custom-token")
-        # stream = await sdk.create_stream_with_headers_provider(custom_provider, table_properties, options)
+        # stream = await sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options, headers_provider=custom_provider)
 
         logger.info(f"✓ Stream created: {stream.stream_id}")
 

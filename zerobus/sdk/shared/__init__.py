@@ -5,6 +5,7 @@ from .definitions import (NOT_RETRIABLE_GRPC_CODES, NonRetriableException,
                           _StreamFailureInfo, _StreamFailureType,
                           get_zerobus_token, log_and_get_exception)
 from .headers_provider import HeadersProvider, OAuthHeadersProvider
+from .tls_config import SecureTlsConfig, TlsConfig
 
 __all__ = [
     "TableProperties",
@@ -22,4 +23,6 @@ __all__ = [
     "get_zerobus_token",
     "OAuthHeadersProvider",
     "HeadersProvider",
+    "SecureTlsConfig",
+    "TlsConfig",
 ]
