@@ -22,9 +22,17 @@
 - Streams now preserve TLS configuration during recreation for consistency
 - Added comprehensive test coverage for all combinations of TLS and headers provider configurations
 
+### Breaking Changes
+
+- **BREAKING**: Removed `create_stream_with_headers_provider()` method
+  - **Migration**: Use `create_stream()` with the `headers_provider` parameter instead
+  - Old: `sdk.create_stream_with_headers_provider(custom_provider, table_properties, options)`
+  - New: `sdk.create_stream(client_id, client_secret, table_properties, options, headers_provider=custom_provider)`
+
 ### API Changes
 
-- **Non-breaking**: Added optional `tls_config` parameter to `create_stream()` methods (both sync and async)
-  - Signature: `create_stream(client_id, client_secret, table_properties, options=None, tls_config=None, headers_provider=None)`
-  - Defaults to `SecureTlsConfig()` when not provided
-  - Fully backward compatible with existing code
+- Added optional `tls_config` parameter to `create_stream()` methods (both sync and async)
+  - Defaults to `SecureTlsConfig()` (system CA certificates) when not provided
+- Added optional `headers_provider` parameter to `create_stream()` methods
+  - Defaults to `OAuthHeadersProvider()` (OAuth 2.0 Client Credentials) when not provided
+- All changes except removal of `create_stream_with_headers_provider()` are backward compatible
