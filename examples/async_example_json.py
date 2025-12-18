@@ -25,10 +25,13 @@ import logging
 import os
 import time
 
+import grpc
+
 from zerobus.sdk.aio import ZerobusSdk
 from zerobus.sdk.shared import (RecordType, StreamConfigurationOptions,
                                 TableProperties)
 from zerobus.sdk.shared.headers_provider import HeadersProvider
+from zerobus.sdk.shared.tls_config import TlsConfig
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -91,6 +94,30 @@ class CustomHeadersProvider(HeadersProvider):
         ]
 
 
+class CustomTlsConfig(TlsConfig):
+    """
+    Example custom TLS configuration for advanced use cases.
+
+    Note: SecureTlsConfig (using system CA certificates) is the default.
+    Use this only if you have specific requirements such as:
+    - Custom CA certificates
+    - Client certificates (mutual TLS)
+    - Custom cipher suites
+    """
+
+    def __init__(self, root_certificates=None, private_key=None, certificate_chain=None):
+        self.root_certificates = root_certificates
+        self.private_key = private_key
+        self.certificate_chain = certificate_chain
+
+    def to_channel_credentials(self) -> grpc.ChannelCredentials:
+        return grpc.ssl_channel_credentials(
+            root_certificates=self.root_certificates,
+            private_key=self.private_key,
+            certificate_chain=self.certificate_chain,
+        )
+
+
 def create_ack_callback():
     """
     Creates an acknowledgment callback that logs progress.
@@ -150,16 +177,22 @@ async def main():
 
         # Step 4: Create a stream with OAuth 2.0 authentication
         #
-        # Standard method: OAuth 2.0 Client Credentials
-        # The SDK automatically includes these headers:
-        #   - "authorization": "Bearer <oauth_token>" (fetched via OAuth 2.0 Client Credentials flow)
-        #   - "x-databricks-zerobus-table-name": "<table_name>"
+        # Standard method: OAuth 2.0 Client Credentials with default TLS (SecureTlsConfig)
+        # The SDK automatically:
+        #   - Uses system CA certificates for TLS
+        #   - Includes authorization header with OAuth token
+        #   - Includes x-databricks-zerobus-table-name header
         stream = await sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options)
+
+        # Advanced: Custom TLS configuration (for special use cases only)
+        # Uncomment to use custom TLS (e.g., custom CA certificates, mTLS):
+        # custom_tls = CustomTlsConfig(root_certificates=your_ca_certs)
+        # stream = await sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options, custom_tls)
 
         # Advanced: Custom headers provider (for special use cases only)
         # Uncomment to use custom headers instead of OAuth:
         # custom_provider = CustomHeadersProvider(custom_token="your-custom-token")
-        # stream = await sdk.create_stream_with_headers_provider(custom_provider, table_properties, options)
+        # stream = await sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options, headers_provider=custom_provider)
 
         logger.info(f"✓ Stream created: {stream.stream_id}")
 
