@@ -199,11 +199,19 @@ async def main():
             futures = []
 
             for i in range(NUM_RECORDS):
-                # Create a record with varying data
-                record = create_sample_record(i)
+                # Two ways to ingest protobuf records:
 
-                # Ingest record asynchronously
-                future = await stream.ingest_record(record)
+                # Option 1: Pass a Message object (SDK serializes to bytes)
+                if i % 2 == 0:
+                    record = create_sample_record(i)
+                    future = await stream.ingest_record(record)
+
+                # Option 2: Pass pre-serialized bytes (client controls serialization)
+                else:
+                    record = create_sample_record(i)
+                    serialized_bytes = record.SerializeToString()
+                    future = await stream.ingest_record(serialized_bytes)
+
                 futures.append(future)
 
                 # Progress indicator

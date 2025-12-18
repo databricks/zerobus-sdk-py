@@ -689,7 +689,7 @@ class ZerobusStream:
         with self.__lock:
             return (record[0] for record in self.__unacked_records)
 
-    def ingest_record(self, record: Union[Message, dict]) -> RecordAcknowledgment:
+    def ingest_record(self, record: Union[Message, dict, bytes, str]) -> RecordAcknowledgment:
         """
         Submits a single record for ingestion into the stream.
 
@@ -697,7 +697,9 @@ class ZerobusStream:
         waiting until there is capacity.
 
         Args:
-            record: Either a Protobuf Message object or a dict (for JSON records).
+            record: The record to ingest. Accepts:
+                   - For PROTO mode: Protobuf Message object (high-level) or bytes (pre-serialized)
+                   - For JSON mode: dict (high-level) or str (pre-serialized JSON string)
                    Type must match the stream's configured record_type.
 
         Returns:
@@ -709,21 +711,26 @@ class ZerobusStream:
         """
         # Validate record type and serialize appropriately
         if self._options.record_type == RecordType.PROTO:
-            if not isinstance(record, Message):
+            if isinstance(record, Message):
+                serialized_record = record.SerializeToString()
+            elif isinstance(record, bytes):
+                serialized_record = record
+            else:
                 raise ValueError(
                     f"Stream is configured for PROTO records, but received {type(record).__name__}. "
-                    "Pass a Protobuf Message object."
+                    "Pass a Protobuf Message object or bytes."
                 )
-            serialized_record = record.SerializeToString()
 
         elif self._options.record_type == RecordType.JSON:
-            if not isinstance(record, dict):
+            if isinstance(record, dict):
+                serialized_record = json.dumps(record).encode("utf-8")
+            elif isinstance(record, str):
+                serialized_record = record.encode("utf-8")
+            else:
                 raise ValueError(
                     f"Stream is configured for JSON records, but received {type(record).__name__}. "
-                    "Pass a dict object."
+                    "Pass a dict or str object."
                 )
-            # Serialize dict to JSON string and encode to bytes
-            serialized_record = json.dumps(record).encode("utf-8")
 
         else:
             raise ValueError(f"Unsupported record type: {self._options.record_type}")

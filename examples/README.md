@@ -58,27 +58,41 @@ The SDK supports two serialization formats:
 #### Protocol Buffers
 **Files:** `sync_example_proto.py`, `async_example_proto.py`
 
-More efficient over the wire. Pass protobuf message objects to the SDK.
+More efficient over the wire. You can pass either:
+- **Message object** (SDK serializes to bytes)
+- **Pre-serialized bytes** (client controls serialization)
 
 ```python
-# Create and ingest protobuf record
+# Create protobuf record
 record = record_pb2.AirQuality(device_name="sensor-1", temp=25, humidity=60)
 table_properties = TableProperties(TABLE_NAME, record_pb2.AirQuality.DESCRIPTOR)
 options = StreamConfigurationOptions(record_type=RecordType.PROTO)
+
+# Option 1: Pass Message object (SDK serializes)
 ack = stream.ingest_record(record)
+
+# Option 2: Pass pre-serialized bytes (client controls serialization)
+# ack = stream.ingest_record(record.SerializeToString())
 ```
 
 #### JSON
 **Files:** `sync_example_json.py`, `async_example_json.py`
 
-Good for getting started. Send records as JSON-encoded strings. No protobuf schema required.
+Good for getting started. No protobuf schema required. You can pass either:
+- **dict** (SDK serializes to JSON)
+- **Pre-serialized JSON string** (client controls serialization)
 
 ```python
-# Create and ingest JSON record
-json_record = json.dumps({"device_name": "sensor-1", "temp": 25, "humidity": 60})
+# Create JSON record
+record_dict = {"device_name": "sensor-1", "temp": 25, "humidity": 60}
 table_properties = TableProperties(TABLE_NAME)
 options = StreamConfigurationOptions(record_type=RecordType.JSON)
-ack = stream.ingest_record(json_record)
+
+# Option 1: Pass dict (SDK serializes)
+ack = stream.ingest_record(record_dict)
+
+# Option 2: Pass pre-serialized JSON string (client controls serialization)
+# ack = stream.ingest_record(json.dumps(record_dict))
 ```
 
 ### Synchronous vs Asynchronous APIs
@@ -130,8 +144,8 @@ Both APIs provide the same functionality and performance. The key differences ar
 
 | Format | Record Input | Configuration |
 |--------|-------------|---------------|
-| **Protobuf** (Default) | Protobuf object or bytes | `TableProperties(table_name, descriptor)` |
-| **JSON** | JSON string | `TableProperties(table_name)` + `StreamConfigurationOptions(record_type=RecordType.JSON)` |
+| **Protobuf** (Default) | `Message` object or `bytes` | `TableProperties(table_name, descriptor)` |
+| **JSON** | `dict` or `str` (JSON string) | `TableProperties(table_name)` + `StreamConfigurationOptions(record_type=RecordType.JSON)` |
 
 ## Authentication
 

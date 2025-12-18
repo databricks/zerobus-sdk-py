@@ -61,12 +61,11 @@ NUM_RECORDS = 1000
 
 def create_sample_json_record(index):
     """
-    Creates a sample AirQuality record as a JSON string.
+    Creates a sample AirQuality record as a dict.
 
-    With JSON mode, records are plain JSON strings that match your schema.
+    With JSON mode, you can pass either a dict or a pre-serialized JSON string.
     """
-    record_dict = {"device_name": f"sensor-{index % 10}", "temp": 20 + (index % 15), "humidity": 50 + (index % 40)}
-    return json.dumps(record_dict)
+    return {"device_name": f"sensor-{index % 10}", "temp": 20 + (index % 15), "humidity": 50 + (index % 40)}
 
 
 class CustomHeadersProvider(HeadersProvider):
@@ -205,11 +204,20 @@ async def main():
             futures = []
 
             for i in range(NUM_RECORDS):
-                # Create a JSON record (as a string)
-                json_record = create_sample_json_record(i)
+                # Create a record dict
+                record_dict = create_sample_json_record(i)
 
-                # Ingest record asynchronously
-                future = await stream.ingest_record(json_record)
+                # Two ways to ingest JSON records:
+
+                # Option 1: Pass a dict (SDK serializes to JSON)
+                if i % 2 == 0:
+                    future = await stream.ingest_record(record_dict)
+
+                # Option 2: Pass a pre-serialized JSON string (client controls serialization)
+                else:
+                    json_string = json.dumps(record_dict)
+                    future = await stream.ingest_record(json_string)
+
                 futures.append(future)
 
                 # Progress indicator

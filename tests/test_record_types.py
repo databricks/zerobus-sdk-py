@@ -67,7 +67,7 @@ class TestRecordTypes(unittest.IsolatedAsyncioTestCase):
 
     @for_both_sdks
     async def test_proto(self, sdk: SdkManager):
-        """Test PROTO configuration."""
+        """Test PROTO configuration with Message objects."""
         calls_count = 0
         mock_grpc_stream = sdk.get_mock_class()(calls_count)
 
@@ -114,8 +114,57 @@ class TestRecordTypes(unittest.IsolatedAsyncioTestCase):
         mock_grpc_stream.cancel()
 
     @for_both_sdks
+    async def test_proto_with_pre_serialized_bytes(self, sdk: SdkManager):
+        """Test PROTO configuration with pre-serialized bytes."""
+        calls_count = 0
+        mock_grpc_stream = sdk.get_mock_class()(calls_count)
+
+        def create_ephemeral_stream(generator, **kwargs):
+            nonlocal calls_count
+            nonlocal mock_grpc_stream
+            calls_count += 1
+            mock_grpc_stream = sdk.get_mock_class()(calls_count, generator)
+            mock_grpc_stream.inject_response(False, InjectedRecordResponse(0, timeout_ms=10))
+            mock_grpc_stream.inject_response(False, InjectedRecordResponse(1, timeout_ms=10))
+            return mock_grpc_stream
+
+        mock_channel = MockGrpcChannel()
+        mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
+
+        options = StreamConfigurationOptions(
+            recovery=False,
+            max_inflight_records=150,
+            token_factory=token_factory,
+            record_type=RecordType.PROTO,
+        )
+
+        with patch(sdk.get_grpc_override(), return_value=mock_channel):
+            sdk_handle = sdk.create(SERVER_ENDPOINT)
+            stream = await sdk_handle.create_stream(
+                TableProperties(TABLE_NAME, test_row_pb2.AirQuality.DESCRIPTOR),
+                options,
+            )
+
+            self.assertEqual(stream.get_state(), StreamState.OPENED)
+
+            # Ingest protobuf records as pre-serialized bytes (client controls serialization)
+            record1 = test_row_pb2.AirQuality(device_name="device1", temp=20, humidity=50)
+            ack1 = await stream.ingest_record(record1.SerializeToString())
+            offset1 = await ack1
+            self.assertEqual(offset1, 0)
+
+            record2 = test_row_pb2.AirQuality(device_name="device2", temp=22, humidity=55)
+            ack2 = await stream.ingest_record(record2.SerializeToString())
+            offset2 = await ack2
+            self.assertEqual(offset2, 1)
+
+            await stream.close()
+
+        mock_grpc_stream.cancel()
+
+    @for_both_sdks
     async def test_json(self, sdk: SdkManager):
-        """Test JSON record ingestion."""
+        """Test JSON record ingestion with dict."""
         calls_count = 0
         mock_grpc_stream = sdk.get_mock_class()(calls_count)
 
@@ -169,6 +218,55 @@ class TestRecordTypes(unittest.IsolatedAsyncioTestCase):
         mock_grpc_stream.cancel()
 
     @for_both_sdks
+    async def test_json_with_pre_serialized_string(self, sdk: SdkManager):
+        """Test JSON record ingestion with pre-serialized JSON string."""
+        calls_count = 0
+        mock_grpc_stream = sdk.get_mock_class()(calls_count)
+
+        def create_ephemeral_stream(generator, **kwargs):
+            nonlocal calls_count
+            nonlocal mock_grpc_stream
+            calls_count += 1
+            mock_grpc_stream = sdk.get_mock_class()(calls_count, generator)
+            mock_grpc_stream.inject_response(False, InjectedRecordResponse(0, timeout_ms=10))
+            mock_grpc_stream.inject_response(False, InjectedRecordResponse(1, timeout_ms=10))
+            return mock_grpc_stream
+
+        mock_channel = MockGrpcChannel()
+        mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
+
+        options = StreamConfigurationOptions(
+            recovery=False,
+            max_inflight_records=150,
+            token_factory=token_factory,
+            record_type=RecordType.JSON,
+        )
+
+        with patch(sdk.get_grpc_override(), return_value=mock_channel):
+            sdk_handle = sdk.create(SERVER_ENDPOINT)
+            stream = await sdk_handle.create_stream(
+                TableProperties(TABLE_NAME),
+                options,
+            )
+
+            self.assertEqual(stream.get_state(), StreamState.OPENED)
+
+            # Ingest JSON records as pre-serialized strings (client controls serialization)
+            import json
+
+            ack1 = await stream.ingest_record(json.dumps({"device_name": "device1", "temp": 20, "humidity": 50}))
+            offset1 = await ack1
+            self.assertEqual(offset1, 0)
+
+            ack2 = await stream.ingest_record(json.dumps({"device_name": "device2", "temp": 22, "humidity": 55}))
+            offset2 = await ack2
+            self.assertEqual(offset2, 1)
+
+            await stream.close()
+
+        mock_grpc_stream.cancel()
+
+    @for_both_sdks
     async def test_wrong_record_type_for_proto_stream(self, sdk: SdkManager):
         """Test that passing wrong record type raises ValueError for PROTO stream."""
         calls_count = 0
@@ -204,6 +302,8 @@ class TestRecordTypes(unittest.IsolatedAsyncioTestCase):
 
             self.assertIn("PROTO records", str(context.exception))
             self.assertIn("dict", str(context.exception))
+            # Error message should mention that Message or bytes are acceptable
+            self.assertIn("bytes", str(context.exception))
 
             await stream.close()
 
@@ -244,7 +344,9 @@ class TestRecordTypes(unittest.IsolatedAsyncioTestCase):
                 await stream.ingest_record(test_row_pb2.AirQuality(device_name="device1", temp=20, humidity=50))
 
             self.assertIn("JSON records", str(context.exception))
+            # Error message should mention that dict or str are acceptable
             self.assertIn("dict", str(context.exception))
+            self.assertIn("str", str(context.exception))
 
             await stream.close()
 
