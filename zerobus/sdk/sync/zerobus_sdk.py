@@ -723,7 +723,14 @@ class ZerobusStream:
 
         elif self._options.record_type == RecordType.JSON:
             if isinstance(record, dict):
-                serialized_record = json.dumps(record).encode("utf-8")
+                try:
+                    serialized_record = json.dumps(record).encode("utf-8")
+                except (TypeError, ValueError) as e:
+                    raise NonRetriableException(
+                        f"Failed to serialize record to JSON: {e}. "
+                        "Ensure all values in the dict are JSON-serializable "
+                        "(str, int, float, bool, None, list, or dict)."
+                    ) from e
             elif isinstance(record, str):
                 serialized_record = record.encode("utf-8")
             else:
