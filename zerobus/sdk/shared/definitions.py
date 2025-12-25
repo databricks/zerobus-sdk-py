@@ -90,6 +90,10 @@ class StreamConfigurationOptions:
         # Type of records to ingest into the stream (default: PROTO for backwards compatibility)
         self.record_type: RecordType = RecordType.PROTO
 
+        # Maximum message size in bytes for gRPC messages (default: 10MB)
+        # Set to -1 for unlimited (not recommended for production)
+        self.max_message_size_bytes: int = 10 * 1024 * 1024
+
         # Dynamically update attributes based on kwargs
         for key, value in kwargs.items():
             if hasattr(self, key):

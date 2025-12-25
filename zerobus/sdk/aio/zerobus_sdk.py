@@ -575,11 +575,9 @@ class ZerobusStream:
         Args:
             record: Either a Protobuf Message object or a dict (for JSON records).
                    Type must match the stream's configured record_type.
-
         Returns:
             asyncio.Future: A future that will be completed with the server's acknowledgment.
                 The caller can await this future to confirm receipt.
-
         Raises:
             ValueError: If record type doesn't match stream configuration.
             ZerobusException: If the stream is not in a valid state for ingestion.
@@ -592,7 +590,6 @@ class ZerobusStream:
                     "Pass a Protobuf Message object."
                 )
             serialized_record = record.SerializeToString()
-
         elif self._options.record_type == RecordType.JSON:
             if not isinstance(record, dict):
                 raise ValueError(
@@ -601,9 +598,16 @@ class ZerobusStream:
                 )
             # Serialize dict to JSON string and encode to bytes
             serialized_record = json.dumps(record).encode("utf-8")
-
         else:
             raise ValueError(f"Unsupported record type: {self._options.record_type}")
+
+        # Validate message size before sending
+        max_size = self._options.max_message_size_bytes
+        if max_size != -1 and len(serialized_record) > max_size:
+            raise ValueError(
+                f"Record size ({len(serialized_record)} bytes) exceeds maximum allowed size ({max_size} bytes). "
+                f"Reduce the record size or increase max_message_size_bytes in StreamConfigurationOptions."
+            )
 
         # Wait for the flush to finish
         async with self.__state_changed:
@@ -806,7 +810,10 @@ class ZerobusSdk:
         channel = grpc.aio.secure_channel(
             self.__host,
             channel_credentials,
-            options=[("grpc.max_send_message_length", -1), ("grpc.max_receive_message_length", -1)],
+            options=[
+                ("grpc.max_send_message_length", options.max_message_size_bytes),
+                ("grpc.max_receive_message_length", -1),
+            ],
         )
         stub = zerobus_service_pb2_grpc.ZerobusStub(channel)
         stream = ZerobusStream(

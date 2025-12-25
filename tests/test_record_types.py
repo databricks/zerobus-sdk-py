@@ -324,5 +324,147 @@ class TestRecordTypes(unittest.IsolatedAsyncioTestCase):
         mock_grpc_stream.cancel()
 
 
+class TestMessageSizeLimit(unittest.IsolatedAsyncioTestCase):
+    """Test message size limit configuration."""
+
+    @for_both_sdks
+    async def test_record_exceeds_size_limit(self, sdk: SdkManager):
+        """Test that record exceeding size limit raises ValueError with actionable message."""
+        calls_count = 0
+        mock_grpc_stream = sdk.get_mock_class()(calls_count)
+
+        def create_ephemeral_stream(generator, **kwargs):
+            nonlocal calls_count
+            nonlocal mock_grpc_stream
+            calls_count += 1
+            mock_grpc_stream = sdk.get_mock_class()(calls_count, generator)
+            return mock_grpc_stream
+
+        mock_channel = MockGrpcChannel()
+        mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
+
+        # Set a small message size limit (100 bytes)
+        options = StreamConfigurationOptions(
+            recovery=False,
+            max_inflight_records=150,
+            token_factory=token_factory,
+            record_type=RecordType.JSON,
+            max_message_size_bytes=100,
+        )
+
+        with patch(sdk.get_grpc_override(), return_value=mock_channel):
+            sdk_handle = sdk.create(SERVER_ENDPOINT)
+            stream = await sdk_handle.create_stream(
+                TableProperties(TABLE_NAME),
+                options,
+            )
+
+            # Try to ingest a record larger than 100 bytes
+            large_record = {"data": "x" * 200}
+
+            with self.assertRaises(ValueError) as context:
+                await stream.ingest_record(large_record)
+
+            error_message = str(context.exception)
+            self.assertIn("exceeds maximum allowed size", error_message)
+            self.assertIn("100 bytes", error_message)
+            self.assertIn("max_message_size_bytes", error_message)
+
+            await stream.close()
+
+        mock_grpc_stream.cancel()
+
+    @for_both_sdks
+    async def test_record_within_size_limit(self, sdk: SdkManager):
+        """Test that records within size limit work normally."""
+        calls_count = 0
+        mock_grpc_stream = sdk.get_mock_class()(calls_count)
+
+        def create_ephemeral_stream(generator, **kwargs):
+            nonlocal calls_count
+            nonlocal mock_grpc_stream
+            calls_count += 1
+            mock_grpc_stream = sdk.get_mock_class()(calls_count, generator)
+            mock_grpc_stream.inject_response(False, InjectedRecordResponse(0, timeout_ms=10))
+            return mock_grpc_stream
+
+        mock_channel = MockGrpcChannel()
+        mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
+
+        # Set a size limit that accommodates the record
+        options = StreamConfigurationOptions(
+            recovery=False,
+            max_inflight_records=150,
+            token_factory=token_factory,
+            record_type=RecordType.JSON,
+            max_message_size_bytes=1000,
+        )
+
+        with patch(sdk.get_grpc_override(), return_value=mock_channel):
+            sdk_handle = sdk.create(SERVER_ENDPOINT)
+            stream = await sdk_handle.create_stream(
+                TableProperties(TABLE_NAME),
+                options,
+            )
+
+            # Ingest a record smaller than 1000 bytes
+            small_record = {"data": "small"}
+            ack = await stream.ingest_record(small_record)
+            offset_ack = await ack
+            self.assertEqual(offset_ack, 0)
+
+            await stream.close()
+
+        mock_grpc_stream.cancel()
+
+    @for_both_sdks
+    async def test_unlimited_message_size(self, sdk: SdkManager):
+        """Test that setting max_message_size_bytes to -1 allows unlimited size."""
+        calls_count = 0
+        mock_grpc_stream = sdk.get_mock_class()(calls_count)
+
+        def create_ephemeral_stream(generator, **kwargs):
+            nonlocal calls_count
+            nonlocal mock_grpc_stream
+            calls_count += 1
+            mock_grpc_stream = sdk.get_mock_class()(calls_count, generator)
+            mock_grpc_stream.inject_response(False, InjectedRecordResponse(0, timeout_ms=10))
+            return mock_grpc_stream
+
+        mock_channel = MockGrpcChannel()
+        mock_channel.injected_methods["/databricks.zerobus.Zerobus/EphemeralStream"] = create_ephemeral_stream
+
+        # Set unlimited message size
+        options = StreamConfigurationOptions(
+            recovery=False,
+            max_inflight_records=150,
+            token_factory=token_factory,
+            record_type=RecordType.JSON,
+            max_message_size_bytes=-1,
+        )
+
+        with patch(sdk.get_grpc_override(), return_value=mock_channel):
+            sdk_handle = sdk.create(SERVER_ENDPOINT)
+            stream = await sdk_handle.create_stream(
+                TableProperties(TABLE_NAME),
+                options,
+            )
+
+            # Should accept large records when unlimited
+            large_record = {"data": "x" * 10000}
+            ack = await stream.ingest_record(large_record)
+            offset_ack = await ack
+            self.assertEqual(offset_ack, 0)
+
+            await stream.close()
+
+        mock_grpc_stream.cancel()
+
+    def test_default_message_size_is_10mb(self):
+        """Test that default max_message_size_bytes is 10MB."""
+        options = StreamConfigurationOptions()
+        self.assertEqual(options.max_message_size_bytes, 10 * 1024 * 1024)
+
+
 if __name__ == "__main__":
     unittest.main()
