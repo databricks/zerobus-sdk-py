@@ -167,6 +167,7 @@ async def main():
             max_inflight_records=10_000,  # Allow 10k records in flight
             recovery=True,  # Enable automatic recovery
             ack_callback=create_ack_callback(),  # Track acknowledgments
+            # max_message_size_bytes=10 * 1024 * 1024,  # Max record size (default: 10MB, use -1 for unlimited)
         )
         logger.info("✓ Stream configuration created")
 

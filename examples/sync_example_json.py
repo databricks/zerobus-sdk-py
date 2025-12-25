@@ -152,6 +152,7 @@ def main():
             recovery_timeout_ms=15000,
             recovery_backoff_ms=2000,
             recovery_retries=3,
+            # max_message_size_bytes=10 * 1024 * 1024,  # Max record size (default: 10MB, use -1 for unlimited)
         )
         logger.info("✓ Stream configuration created")
 
