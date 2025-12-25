@@ -635,6 +635,7 @@ For advanced use cases requiring custom authentication headers or TLS configurat
 |--------|---------|-------------|
 | `record_type` | `RecordType.PROTO` | Serialization format: `RecordType.PROTO` or `RecordType.JSON` |
 | `max_inflight_records` | 50000 | Maximum number of unacknowledged records |
+| `max_message_size_bytes` | 10485760 (10MB) | Maximum size of a single record in bytes. Set to `-1` for unlimited |
 | `recovery` | True | Enable automatic stream recovery |
 | `recovery_timeout_ms` | 15000 | Timeout for recovery operations (ms) |
 | `recovery_backoff_ms` | 2000 | Delay between recovery attempts (ms) |
@@ -890,6 +891,7 @@ Configuration options for stream behavior.
 StreamConfigurationOptions(
     record_type: RecordType = RecordType.PROTO,
     max_inflight_records: int = 50000,
+    max_message_size_bytes: int = 10485760,
     recovery: bool = True,
     recovery_timeout_ms: int = 15000,
     recovery_backoff_ms: int = 2000,
@@ -903,6 +905,7 @@ StreamConfigurationOptions(
 **Parameters:**
 - `record_type` (RecordType) - Serialization format: `RecordType.PROTO` (default) or `RecordType.JSON`
 - `max_inflight_records` (int) - Maximum number of unacknowledged records (default: 50000)
+- `max_message_size_bytes` (int) - Maximum size of a single record in bytes (default: 10MB). Records exceeding this limit will raise a `ValueError` with an actionable error message. Set to `-1` for unlimited (not recommended)
 - `recovery` (bool) - Enable or disable automatic stream recovery (default: True)
 - `recovery_timeout_ms` (int) - Recovery operation timeout in milliseconds (default: 15000)
 - `recovery_backoff_ms` (int) - Delay between recovery attempts in milliseconds (default: 2000)

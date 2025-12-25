@@ -6,6 +6,8 @@
 
 - **Custom TLS Configuration**: Added support for custom TLS/SSL configuration via the `TlsConfig` interface. The SDK uses `SecureTlsConfig` (system CA certificates) by default, with optional custom implementations for advanced use cases such as custom CA certificates, mutual TLS (mTLS), or custom cipher suites.
 
+- **Configurable Message Size Limit**: Added `max_message_size_bytes` option to `StreamConfigurationOptions` to limit the size of individual records sent to the server. Defaults to 10MB. Records exceeding this limit will fail fast with an actionable error message before being sent to the server. Set to `-1` for unlimited (not recommended for production).
+
 ### Bug Fixes
 
 ### Documentation
@@ -14,6 +16,8 @@
 - Added `TlsConfig` section to API Reference
 - Updated example files to include custom TLS configuration examples
 - Added brief mentions of advanced configuration options in appropriate sections
+- Added `max_message_size_bytes` to Configuration table and API Reference
+- Updated all example files to show message size limit configuration
 
 ### Internal Changes
 
