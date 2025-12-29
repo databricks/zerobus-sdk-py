@@ -15,6 +15,7 @@
 
 ### Documentation
 
+- Updated README with new Delta type mappings (TIMESTAMP_NTZ, VARIANT)
 - Updated README with TLS configuration documentation
 - Added `TlsConfig` section to API Reference
 - Updated example files to include custom TLS configuration examples
@@ -25,6 +26,10 @@
 
 ### Internal Changes
 
+- **generate_proto tool**: Added support for TIMESTAMP_NTZ and VARIANT data types
+  - TIMESTAMP_NTZ maps to int64 (timestamp without timezone, microseconds since epoch)
+  - VARIANT maps to string (unshredded, JSON string format)
+- **generate_proto tool**: Added comprehensive unit tests for all pure functions (84 tests covering type parsing, type mapping, field validation, and proto file generation)
 - Implemented `TlsConfig` Strategy pattern for flexible TLS configuration
 - Added `SecureTlsConfig` as default TLS implementation
 - Streams now preserve TLS configuration during recreation for consistency

@@ -334,7 +334,7 @@ After generating, compile it as shown above.
 
 | Delta Type | Proto2 Type |
 |-----------|-------------|
-| INT, SMALLINT, SHORT | int32 |
+| TINYINT, BYTE, INT, SMALLINT, SHORT | int32 |
 | BIGINT, LONG | int64 |
 | FLOAT | float |
 | DOUBLE | double |
@@ -343,9 +343,11 @@ After generating, compile it as shown above.
 | BINARY | bytes |
 | DATE | int32 |
 | TIMESTAMP | int64 |
+| TIMESTAMP_NTZ | int64 |
 | ARRAY\<type\> | repeated type |
 | MAP\<key, value\> | map\<key, value\> |
 | STRUCT\<fields\> | nested message |
+| VARIANT | string (unshredded, JSON string) |
 
 #### Write Your Client Code (Protocol Buffers)
 
