@@ -361,7 +361,7 @@ class ZerobusStream:
 
                 unacked_offset_ids = list(self.__pending_futures.keys())
                 for old_offset_id in unacked_offset_ids:
-                    (record_ack_received_future, sent_record, serialized_record) = self.__pending_futures.get(
+                    record_ack_received_future, sent_record, serialized_record = self.__pending_futures.get(
                         old_offset_id
                     )
 
@@ -481,7 +481,7 @@ class ZerobusStream:
 
                 first_offset_in_ack = 0 if self.__last_received_offset is None else self.__last_received_offset + 1
                 for offset_to_ack in range(first_offset_in_ack, response.durability_ack_up_to_offset + 1):
-                    (future, _, _) = self.__pending_futures.get(offset_to_ack, (None, None, None))
+                    future, _, _ = self.__pending_futures.get(offset_to_ack, (None, None, None))
                     if future is not None:
                         future.set_result(offset_to_ack)
                     self.__pending_futures.pop(offset_to_ack, (None, None, None))

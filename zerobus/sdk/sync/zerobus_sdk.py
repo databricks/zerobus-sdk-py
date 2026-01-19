@@ -471,7 +471,7 @@ class ZerobusStream:
                     with self.__lock:
                         if old_offset_id not in self.__pending_futures:
                             continue
-                        (future, sent_record, serialized_record) = self.__pending_futures.get(old_offset_id)
+                        future, sent_record, serialized_record = self.__pending_futures.get(old_offset_id)
 
                         offset_id += 1
 
