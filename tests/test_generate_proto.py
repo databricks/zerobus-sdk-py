@@ -5,11 +5,16 @@ import tempfile
 
 import pytest
 
-from zerobus.tools.generate_proto import (extract_columns, generate_proto_file,
-                                          get_proto_field_info,
-                                          parse_array_type, parse_map_type,
-                                          parse_struct_type, to_pascal_case,
-                                          validate_field_name)
+from zerobus.tools.generate_proto import (
+    extract_columns,
+    generate_proto_file,
+    get_proto_field_info,
+    parse_array_type,
+    parse_map_type,
+    parse_struct_type,
+    to_pascal_case,
+    validate_field_name,
+)
 
 
 class TestToPascalCase:
