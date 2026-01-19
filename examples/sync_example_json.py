@@ -23,8 +23,7 @@ import time
 
 import grpc
 
-from zerobus.sdk.shared import (RecordType, StreamConfigurationOptions,
-                                TableProperties)
+from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
 from zerobus.sdk.shared.headers_provider import HeadersProvider
 from zerobus.sdk.shared.tls_config import TlsConfig
 from zerobus.sdk.sync import ZerobusSdk

@@ -8,11 +8,20 @@ import grpc
 from google.protobuf.descriptor_pb2 import DescriptorProto
 from google.protobuf.message import Message
 
-from ..shared import (NOT_RETRIABLE_GRPC_CODES, NonRetriableException,
-                      RecordType, StreamConfigurationOptions, StreamState,
-                      TableProperties, ZerobusException, _StreamFailureInfo,
-                      _StreamFailureType, log_and_get_exception,
-                      zerobus_service_pb2, zerobus_service_pb2_grpc)
+from ..shared import (
+    NOT_RETRIABLE_GRPC_CODES,
+    NonRetriableException,
+    RecordType,
+    StreamConfigurationOptions,
+    StreamState,
+    TableProperties,
+    ZerobusException,
+    _StreamFailureInfo,
+    _StreamFailureType,
+    log_and_get_exception,
+    zerobus_service_pb2,
+    zerobus_service_pb2_grpc,
+)
 from ..shared.headers_provider import HeadersProvider, OAuthHeadersProvider
 from ..shared.tls_config import SecureTlsConfig, TlsConfig
 

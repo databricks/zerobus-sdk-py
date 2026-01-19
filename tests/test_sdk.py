@@ -5,13 +5,24 @@ from unittest.mock import patch
 import grpc
 
 import tests.row_pb2 as test_row_pb2
-from tests.mock_grpc import (CloseStreamSignalResponse, InjectedError,
-                             InjectedRecordResponse, MockGrpcChannel,
-                             MockSyncStream, SdkManager,
-                             WrongCreateStreamResponse, for_both_sdks)
-from zerobus.sdk import (NonRetriableException, StreamConfigurationOptions,
-                         StreamState, TableProperties, ZerobusException,
-                         ZerobusSdk)
+from tests.mock_grpc import (
+    CloseStreamSignalResponse,
+    InjectedError,
+    InjectedRecordResponse,
+    MockGrpcChannel,
+    MockSyncStream,
+    SdkManager,
+    WrongCreateStreamResponse,
+    for_both_sdks,
+)
+from zerobus.sdk import (
+    NonRetriableException,
+    StreamConfigurationOptions,
+    StreamState,
+    TableProperties,
+    ZerobusException,
+    ZerobusSdk,
+)
 
 SERVER_ENDPOINT = "SERVER_ENDPOINT"
 TABLE_NAME = "catalog.schema.test_table"

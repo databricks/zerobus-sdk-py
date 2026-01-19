@@ -6,10 +6,8 @@ import unittest
 from unittest.mock import patch
 
 import tests.row_pb2 as test_row_pb2
-from tests.mock_grpc import (InjectedRecordResponse, MockGrpcChannel,
-                             SdkManager, for_both_sdks)
-from zerobus.sdk import (RecordType, StreamConfigurationOptions, StreamState,
-                         TableProperties)
+from tests.mock_grpc import InjectedRecordResponse, MockGrpcChannel, SdkManager, for_both_sdks
+from zerobus.sdk import RecordType, StreamConfigurationOptions, StreamState, TableProperties
 
 SERVER_ENDPOINT = "SERVER_ENDPOINT"
 TABLE_NAME = "catalog.schema.test_table"

@@ -10,10 +10,8 @@ from unittest.mock import patch
 import grpc
 
 import tests.row_pb2 as test_row_pb2
-from tests.mock_grpc import (InjectedRecordResponse, MockGrpcChannel,
-                             SdkManager, for_both_sdks)
-from zerobus.sdk import (StreamConfigurationOptions, StreamState,
-                         TableProperties, ZerobusException)
+from tests.mock_grpc import InjectedRecordResponse, MockGrpcChannel, SdkManager, for_both_sdks
+from zerobus.sdk import StreamConfigurationOptions, StreamState, TableProperties, ZerobusException
 from zerobus.sdk.shared.headers_provider import HeadersProvider
 from zerobus.sdk.shared.tls_config import TlsConfig
 

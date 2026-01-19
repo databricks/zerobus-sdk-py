@@ -6,9 +6,14 @@ please use `from zerobus_sdk.aio import ...`.
 """
 
 from . import sync
-from .shared import (NonRetriableException, RecordType,
-                     StreamConfigurationOptions, StreamState, TableProperties,
-                     ZerobusException)
+from .shared import (
+    NonRetriableException,
+    RecordType,
+    StreamConfigurationOptions,
+    StreamState,
+    TableProperties,
+    ZerobusException,
+)
 from .shared.tls_config import SecureTlsConfig, TlsConfig
 
 ZerobusSdk = sync.ZerobusSdk
