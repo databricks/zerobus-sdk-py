@@ -43,6 +43,8 @@ Type mappings:
     BINARY           -> bytes
     DATE             -> int32
     TIMESTAMP        -> int64
+    TIMESTAMP_NTZ    -> int64
+    VARIANT          -> string (unshredded, JSON string)
     ARRAY<type>      -> repeated type
     MAP<key_type, value_type> -> map<key_type, value_type>
     STRUCT<field1:type1, field2:type2> -> nested message
@@ -413,6 +415,8 @@ def get_proto_field_info(
         "BINARY": "bytes",
         "DATE": "int32",
         "TIMESTAMP": "int64",
+        "TIMESTAMP_NTZ": "int64",
+        "VARIANT": "string",
     }
 
     proto_type = type_mapping.get(col_type)
