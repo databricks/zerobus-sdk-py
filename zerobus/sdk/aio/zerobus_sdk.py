@@ -8,11 +8,20 @@ import grpc
 from google.protobuf.descriptor_pb2 import DescriptorProto
 from google.protobuf.message import Message
 
-from ..shared import (NOT_RETRIABLE_GRPC_CODES, NonRetriableException,
-                      RecordType, StreamConfigurationOptions, StreamState,
-                      TableProperties, ZerobusException, _StreamFailureInfo,
-                      _StreamFailureType, log_and_get_exception,
-                      zerobus_service_pb2, zerobus_service_pb2_grpc)
+from ..shared import (
+    NOT_RETRIABLE_GRPC_CODES,
+    NonRetriableException,
+    RecordType,
+    StreamConfigurationOptions,
+    StreamState,
+    TableProperties,
+    ZerobusException,
+    _StreamFailureInfo,
+    _StreamFailureType,
+    log_and_get_exception,
+    zerobus_service_pb2,
+    zerobus_service_pb2_grpc,
+)
 from ..shared.headers_provider import HeadersProvider, OAuthHeadersProvider
 from ..shared.tls_config import SecureTlsConfig, TlsConfig
 
@@ -352,7 +361,7 @@ class ZerobusStream:
 
                 unacked_offset_ids = list(self.__pending_futures.keys())
                 for old_offset_id in unacked_offset_ids:
-                    (record_ack_received_future, sent_record, serialized_record) = self.__pending_futures.get(
+                    record_ack_received_future, sent_record, serialized_record = self.__pending_futures.get(
                         old_offset_id
                     )
 
@@ -472,7 +481,7 @@ class ZerobusStream:
 
                 first_offset_in_ack = 0 if self.__last_received_offset is None else self.__last_received_offset + 1
                 for offset_to_ack in range(first_offset_in_ack, response.durability_ack_up_to_offset + 1):
-                    (future, _, _) = self.__pending_futures.get(offset_to_ack, (None, None, None))
+                    future, _, _ = self.__pending_futures.get(offset_to_ack, (None, None, None))
                     if future is not None:
                         future.set_result(offset_to_ack)
                     self.__pending_futures.pop(offset_to_ack, (None, None, None))
@@ -565,7 +574,7 @@ class ZerobusStream:
         """
         return (record[0] for record in self.__unacked_records)
 
-    async def ingest_record(self, record: Union[Message, dict]) -> asyncio.Future:
+    async def ingest_record(self, record: Union[Message, dict, bytes, str]) -> asyncio.Future:
         """
         Asynchronously submits a single record for ingestion into the stream.
 
@@ -573,7 +582,9 @@ class ZerobusStream:
         reached, pausing until there is capacity.
 
         Args:
-            record: Either a Protobuf Message object or a dict (for JSON records).
+            record: The record to ingest. Accepts:
+                   - For PROTO mode: Protobuf Message object (high-level) or bytes (pre-serialized)
+                   - For JSON mode: dict (high-level) or str (pre-serialized JSON string)
                    Type must match the stream's configured record_type.
 
         Returns:
@@ -586,21 +597,33 @@ class ZerobusStream:
         """
         # Validate record type and serialize appropriately
         if self._options.record_type == RecordType.PROTO:
-            if not isinstance(record, Message):
+            if isinstance(record, Message):
+                serialized_record = record.SerializeToString()
+            elif isinstance(record, bytes):
+                serialized_record = record
+            else:
                 raise ValueError(
                     f"Stream is configured for PROTO records, but received {type(record).__name__}. "
-                    "Pass a Protobuf Message object."
+                    "Pass a Protobuf Message object or bytes."
                 )
-            serialized_record = record.SerializeToString()
 
         elif self._options.record_type == RecordType.JSON:
-            if not isinstance(record, dict):
+            if isinstance(record, dict):
+                try:
+                    serialized_record = json.dumps(record).encode("utf-8")
+                except (TypeError, ValueError) as e:
+                    raise NonRetriableException(
+                        f"Failed to serialize record to JSON: {e}. "
+                        "Ensure all values in the dict are JSON-serializable "
+                        "(str, int, float, bool, None, list, or dict)."
+                    ) from e
+            elif isinstance(record, str):
+                serialized_record = record.encode("utf-8")
+            else:
                 raise ValueError(
                     f"Stream is configured for JSON records, but received {type(record).__name__}. "
-                    "Pass a dict object."
+                    "Pass a dict or str object."
                 )
-            # Serialize dict to JSON string and encode to bytes
-            serialized_record = json.dumps(record).encode("utf-8")
 
         else:
             raise ValueError(f"Unsupported record type: {self._options.record_type}")

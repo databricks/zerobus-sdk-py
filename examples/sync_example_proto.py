@@ -18,11 +18,11 @@ import os
 import time
 
 import grpc
+
 # Import the generated protobuf module
 import record_pb2
 
-from zerobus.sdk.shared import (RecordType, StreamConfigurationOptions,
-                                TableProperties)
+from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
 from zerobus.sdk.shared.headers_provider import HeadersProvider
 from zerobus.sdk.shared.tls_config import TlsConfig
 from zerobus.sdk.sync import ZerobusSdk
@@ -199,11 +199,18 @@ def main():
 
         try:
             for i in range(NUM_RECORDS):
-                # Create a record
-                record = create_sample_record(i)
+                # Two ways to ingest protobuf records:
 
-                # Ingest and wait for acknowledgment
-                ack = stream.ingest_record(record)
+                # Option 1: Pass a Message object (SDK serializes to bytes)
+                if i % 2 == 0:
+                    record = create_sample_record(i)
+                    ack = stream.ingest_record(record)
+
+                # Option 2: Pass pre-serialized bytes (client controls serialization)
+                else:
+                    record = create_sample_record(i)
+                    serialized_bytes = record.SerializeToString()
+                    ack = stream.ingest_record(serialized_bytes)
 
                 # Wait for record to be durably written
                 ack.wait_for_ack()

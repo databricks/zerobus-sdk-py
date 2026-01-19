@@ -23,8 +23,7 @@ import time
 
 import grpc
 
-from zerobus.sdk.shared import (RecordType, StreamConfigurationOptions,
-                                TableProperties)
+from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
 from zerobus.sdk.shared.headers_provider import HeadersProvider
 from zerobus.sdk.shared.tls_config import TlsConfig
 from zerobus.sdk.sync import ZerobusSdk
@@ -57,12 +56,11 @@ NUM_RECORDS = 100
 
 def create_sample_json_record(index):
     """
-    Creates a sample AirQuality record as a JSON string.
+    Creates a sample AirQuality record as a dict.
 
-    With JSON mode, records are plain JSON strings that match your schema.
+    With JSON mode, you can pass either a dict or a pre-serialized JSON string.
     """
-    record_dict = {"device_name": f"sensor-{index % 10}", "temp": 20 + (index % 15), "humidity": 50 + (index % 40)}
-    return json.dumps(record_dict)
+    return {"device_name": f"sensor-{index % 10}", "temp": 20 + (index % 15), "humidity": 50 + (index % 40)}
 
 
 class CustomHeadersProvider(HeadersProvider):
@@ -183,11 +181,19 @@ def main():
 
         try:
             for i in range(NUM_RECORDS):
-                # Create a JSON record (as a string)
-                json_record = create_sample_json_record(i)
+                # Create a record dict
+                record_dict = create_sample_json_record(i)
 
-                # Ingest and wait for acknowledgment
-                ack = stream.ingest_record(json_record)
+                # Two ways to ingest JSON records:
+
+                # Option 1: Pass a dict (SDK serializes to JSON)
+                if i % 2 == 0:
+                    ack = stream.ingest_record(record_dict)
+
+                # Option 2: Pass a pre-serialized JSON string (client controls serialization)
+                else:
+                    json_string = json.dumps(record_dict)
+                    ack = stream.ingest_record(json_string)
 
                 # Wait for record to be durably written
                 ack.wait_for_ack()

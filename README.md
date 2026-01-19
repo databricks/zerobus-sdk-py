@@ -188,16 +188,20 @@ stream = sdk.create_stream(client_id, client_secret, table_properties, options)
 try:
     # Ingest records
     for i in range(100):
-        # Create JSON record
+        # Option 1: Pass a dict (SDK serializes to JSON)
         record_dict = {
             "device_name": f"sensor-{i % 10}",
             "temp": 20 + (i % 15),
             "humidity": 50 + (i % 40)
         }
-        json_record = json.dumps(record_dict)
+        ack = stream.ingest_record(record_dict)
 
-        ack = stream.ingest_record(json_record)
-        ack.wait_for_ack()  # Optional: Wait for durability confirmation
+        # Option 2: Pass a pre-serialized JSON string (client controls serialization)
+        # json_string = json.dumps(record_dict)
+        # ack = stream.ingest_record(json_string)
+
+        # Optional: Wait for durability confirmation
+        ack.wait_for_ack()
 
         print(f"Ingested record {i + 1}")
 
@@ -249,16 +253,20 @@ async def main():
     try:
         # Ingest records
         for i in range(100):
-            # Create JSON record
+            # Option 1: Pass a dict (SDK serializes to JSON)
             record_dict = {
                 "device_name": f"sensor-{i % 10}",
                 "temp": 20 + (i % 15),
                 "humidity": 50 + (i % 40)
             }
-            json_record = json.dumps(record_dict)
+            future = await stream.ingest_record(record_dict)
 
-            future = await stream.ingest_record(json_record)
-            await future  # Optional: Wait for durability confirmation
+            # Option 2: Pass a pre-serialized JSON string (client controls serialization)
+            # json_string = json.dumps(record_dict)
+            # future = await stream.ingest_record(json_string)
+
+            # Optional: Wait for durability confirmation
+            await future
 
             print(f"Ingested record {i + 1}")
 
@@ -379,14 +387,20 @@ stream = sdk.create_stream(client_id, client_secret, table_properties)
 try:
     # Ingest records
     for i in range(100):
+        # Option 1: Pass a Message object (SDK serializes to bytes)
         record = record_pb2.AirQuality(
             device_name=f"sensor-{i % 10}",
             temp=20 + (i % 15),
             humidity=50 + (i % 40)
         )
-
         ack = stream.ingest_record(record)
-        ack.wait_for_ack()  # Optional: Wait for durability confirmation
+
+        # Option 2: Pass pre-serialized bytes (client controls serialization)
+        # serialized_bytes = record.SerializeToString()
+        # ack = stream.ingest_record(serialized_bytes)
+
+        # Optional: Wait for durability confirmation
+        ack.wait_for_ack()
 
         print(f"Ingested record {i + 1}")
 
@@ -435,14 +449,20 @@ async def main():
     try:
         # Ingest records
         for i in range(100):
+            # Option 1: Pass a Message object (SDK serializes to bytes)
             record = record_pb2.AirQuality(
                 device_name=f"sensor-{i % 10}",
                 temp=20 + (i % 15),
                 humidity=50 + (i % 40)
             )
-
             future = await stream.ingest_record(record)
-            await future  # Optional: Wait for durability confirmation
+
+            # Option 2: Pass pre-serialized bytes (client controls serialization)
+            # serialized_bytes = record.SerializeToString()
+            # future = await stream.ingest_record(serialized_bytes)
+
+            # Optional: Wait for durability confirmation
+            await future
 
             print(f"Ingested record {i + 1}")
 
@@ -476,15 +496,16 @@ stream = sdk.create_stream(client_id, client_secret, table_properties, options)
 
 try:
     for i in range(1000):
+        # Pass a dict (SDK serializes) or a pre-serialized JSON string
         record_dict = {
             "device_name": f"sensor-{i}",
             "temp": 20 + i % 15,
             "humidity": 50 + i % 40
         }
-        json_record = json.dumps(record_dict)
+        ack = stream.ingest_record(record_dict)
 
-        ack = stream.ingest_record(json_record)
-        ack.wait_for_ack()  # Optional: Wait for durability confirmation
+        # Optional: Wait for durability confirmation
+        ack.wait_for_ack()
 finally:
     stream.close()
 ```
@@ -516,14 +537,13 @@ async def main():
     futures = []
     try:
         for i in range(100000):
+            # Pass a dict (SDK serializes) or a pre-serialized JSON string
             record_dict = {
                 "device_name": f"sensor-{i % 10}",
                 "temp": 20 + i % 15,
                 "humidity": 50 + i % 40
             }
-            json_record = json.dumps(record_dict)
-
-            future = await stream.ingest_record(json_record)
+            future = await stream.ingest_record(record_dict)
             futures.append(future)
 
         await stream.flush()
@@ -552,14 +572,16 @@ stream = sdk.create_stream(client_id, client_secret, table_properties)
 
 try:
     for i in range(1000):
+        # Pass a Message object (SDK serializes) or pre-serialized bytes
         record = record_pb2.AirQuality(
             device_name=f"sensor-{i}",
             temp=20 + i % 15,
             humidity=50 + i % 40
         )
-
         ack = stream.ingest_record(record)
-        ack.wait_for_ack()  # Optional: Wait for durability confirmation
+
+        # Optional: Wait for durability confirmation
+        ack.wait_for_ack()
 finally:
     stream.close()
 ```
@@ -590,12 +612,12 @@ async def main():
     futures = []
     try:
         for i in range(100000):
+            # Pass a Message object (SDK serializes) or pre-serialized bytes
             record = record_pb2.AirQuality(
                 device_name=f"sensor-{i % 10}",
                 temp=20 + i % 15,
                 humidity=50 + i % 40
             )
-
             future = await stream.ingest_record(record)
             futures.append(future)
 
@@ -778,9 +800,13 @@ Represents an active ingestion stream.
 **Synchronous Methods:**
 
 ```python
-def ingest_record(record: Union[str, bytes, Message]) -> RecordAcknowledgment
+def ingest_record(record: Union[Message, dict, bytes, str]) -> RecordAcknowledgment
 ```
-Ingests a single record. Pass a JSON string (JSON mode) or protobuf message/bytes (protobuf mode). Returns a `RecordAcknowledgment` for tracking.
+Ingests a single record. Returns a `RecordAcknowledgment` for tracking.
+
+**Accepted record types:**
+- **JSON mode**: `dict` (SDK serializes) or `str` (pre-serialized JSON string)
+- **Protobuf mode**: `Message` object (SDK serializes) or `bytes` (pre-serialized)
 
 ```python
 def flush() -> None
@@ -808,9 +834,13 @@ Returns the unique stream ID assigned by the server.
 **Asynchronous Methods:**
 
 ```python
-async def ingest_record(record: Union[str, bytes, Message]) -> Awaitable
+async def ingest_record(record: Union[Message, dict, bytes, str]) -> Awaitable
 ```
-Ingests a single record. Pass a JSON string (JSON mode) or protobuf message/bytes (protobuf mode). Returns an awaitable that completes when the record is durably written.
+Ingests a single record. Returns an awaitable that completes when the record is durably written.
+
+**Accepted record types:**
+- **JSON mode**: `dict` (SDK serializes) or `str` (pre-serialized JSON string)
+- **Protobuf mode**: `Message` object (SDK serializes) or `bytes` (pre-serialized)
 
 ```python
 async def flush() -> None
