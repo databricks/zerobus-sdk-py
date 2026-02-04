@@ -7,7 +7,9 @@ This module re-exports common types from the Rust core for backward compatibilit
 # Re-export from Rust core for backward compatibility
 from zerobus._zerobus_core import (
     AckCallback,
+    HeadersProvider,
     NonRetriableException,
+    OAuthHeadersProvider,
     RecordType,
     StreamConfigurationOptions,
     TableProperties,
@@ -21,4 +23,6 @@ __all__ = [
     "ZerobusException",
     "NonRetriableException",
     "AckCallback",
+    "HeadersProvider",
+    "OAuthHeadersProvider",
 ]

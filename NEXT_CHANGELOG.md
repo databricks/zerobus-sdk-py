@@ -16,8 +16,6 @@
 
 ### New Features and Improvements
 
-- **Custom TLS Configuration**: Added support for custom TLS/SSL configuration via the `TlsConfig` interface. The SDK uses `SecureTlsConfig` (system CA certificates) by default, with optional custom implementations for advanced use cases such as custom CA certificates, mutual TLS (mTLS), or custom cipher suites.
-
 - **Flexible Record Serialization**: `ingest_record()` now accepts multiple input types, giving clients control over serialization:
   - **JSON mode**: Accepts both `dict` (SDK serializes) and `str` (pre-serialized JSON string)
   - **Protobuf mode**: Accepts both `Message` objects (SDK serializes) and `bytes` (pre-serialized)
@@ -28,10 +26,6 @@
 ### Documentation
 
 - Updated README with new Delta type mappings (TIMESTAMP_NTZ, VARIANT)
-- Updated README with TLS configuration documentation
-- Added `TlsConfig` section to API Reference
-- Updated example files to include custom TLS configuration examples
-- Added brief mentions of advanced configuration options in appropriate sections
 - Updated `ingest_record()` API documentation to show all accepted record types
 - Added inline examples demonstrating both serialization approaches (SDK-controlled vs. client-controlled)
 - Updated examples README with clear explanations of serialization options
@@ -42,10 +36,6 @@
   - TIMESTAMP_NTZ maps to int64 (timestamp without timezone, microseconds since epoch)
   - VARIANT maps to string (unshredded, JSON string format)
 - **generate_proto tool**: Added comprehensive unit tests for all pure functions (84 tests covering type parsing, type mapping, field validation, and proto file generation)
-- Implemented `TlsConfig` Strategy pattern for flexible TLS configuration
-- Added `SecureTlsConfig` as default TLS implementation
-- Streams now preserve TLS configuration during recreation for consistency
-- Added comprehensive test coverage for all combinations of TLS and headers provider configurations
 - Enhanced `ingest_record()` type validation to accept wider range of input types
 - Added test coverage for both high-level objects (dict/Message) and pre-serialized data (str/bytes)
 
@@ -56,10 +46,18 @@
   - Old: `sdk.create_stream_with_headers_provider(custom_provider, table_properties, options)`
   - New: `sdk.create_stream(client_id, client_secret, table_properties, options, headers_provider=custom_provider)`
 
+### Deprecations
+
+- **DEPRECATED**: `ingest_record()` method (both sync and async)
+  - **Reason**: Offers significantly lower throughput compared to `ingest_record_offset()` and `ingest_record_nowait()`
+  - **Migration**:
+    - For sync API: Use `ingest_record_offset()` for offset tracking or `ingest_record_nowait()` for maximum throughput
+    - For async API: Use `ingest_record_offset()` with batched `asyncio.gather()` pattern or `ingest_record_nowait()` for maximum throughput
+  - **Performance Impact**: New methods are 2-40x faster depending on record size
+  - **Note**: Method remains available for backward compatibility but will be removed in a future major version
+
 ### API Changes
 
-- Added optional `tls_config` parameter to `create_stream()` methods (both sync and async)
-  - Defaults to `SecureTlsConfig()` (system CA certificates) when not provided
 - Added optional `headers_provider` parameter to `create_stream()` methods
   - Defaults to `OAuthHeadersProvider()` (OAuth 2.0 Client Credentials) when not provided
 - Widened `ingest_record()` type signature to accept:

@@ -153,7 +153,7 @@ GRANT SELECT, MODIFY ON TABLE <catalog_name>.default.air_quality TO `<service-pr
 
 ### Installation
 
-#### From PyPI
+#### From PyPI (Recommended)
 
 Install the latest stable version using pip:
 
@@ -161,17 +161,31 @@ Install the latest stable version using pip:
 pip install databricks-zerobus-ingest-sdk
 ```
 
+Pre-built wheels are available for:
+- **Linux**: x86_64, aarch64 (manylinux)
+- **macOS**: x86_64, arm64 (universal2)
+- **Windows**: x86_64
+
 #### From Source
 
-Clone the repository and install from source:
+Building from source requires the **Rust toolchain** (install from [rustup.rs](https://rustup.rs/)).
 
 ```bash
+# Install Rust (if not already installed)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Clone and install
 git clone https://github.com/databricks/zerobus-sdk-py.git
 cd zerobus-sdk-py
 pip install -e .
 ```
 
-**Note**: Building from source requires Rust toolchain. The SDK uses [maturin](https://github.com/PyO3/maturin) to build Python bindings for the Rust implementation. Pre-built wheels are available on PyPI for common platforms.
+The SDK uses [maturin](https://github.com/PyO3/maturin) to build Python bindings for the Rust implementation. Installation via `pip install -e .` automatically:
+1. Installs maturin if needed
+2. Compiles the Rust extension
+3. Installs the package in editable mode
+
+**For active development**, see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed build instructions and development workflows.
 
 ### Choose Your Serialization Format
 
@@ -684,9 +698,9 @@ table_properties = TableProperties(table_name, record_pb2.AirQuality.DESCRIPTOR)
 stream = sdk.create_stream(client_id, client_secret, table_properties)
 ```
 
-The SDK automatically handles OAuth 2.0 authentication and uses secure TLS connections with system CA certificates by default.
+The SDK automatically handles OAuth 2.0 authentication and uses secure TLS connections by default.
 
-For advanced use cases requiring custom authentication headers or TLS configuration, see the `HeadersProvider` and `TlsConfig` sections in the API Reference below.
+For advanced use cases requiring custom authentication headers, see the `HeadersProvider` section in the API Reference below.
 
 ## Configuration
 
@@ -773,7 +787,6 @@ def create_stream(
     client_secret: str,
     table_properties: TableProperties,
     options: StreamConfigurationOptions = None,
-    tls_config: TlsConfig = None,
     headers_provider: HeadersProvider = None
 ) -> ZerobusStream
 ```
@@ -784,7 +797,6 @@ Creates a new ingestion stream using OAuth 2.0 Client Credentials authentication
 - `client_secret` (str) - OAuth client secret (ignored if `headers_provider` is provided)
 - `table_properties` (TableProperties) - Target table configuration
 - `options` (StreamConfigurationOptions) - Stream behavior configuration (optional)
-- `tls_config` (TlsConfig) - Custom TLS configuration (optional, defaults to `SecureTlsConfig`)
 - `headers_provider` (HeadersProvider) - Custom headers provider (optional, defaults to OAuth)
 
 Automatically includes these headers (when using default OAuth):
@@ -810,7 +822,6 @@ async def create_stream(
     client_secret: str,
     table_properties: TableProperties,
     options: StreamConfigurationOptions = None,
-    tls_config: TlsConfig = None,
     headers_provider: HeadersProvider = None
 ) -> ZerobusStream
 ```
@@ -821,7 +832,6 @@ Creates a new ingestion stream using OAuth 2.0 Client Credentials authentication
 - `client_secret` (str) - OAuth client secret (ignored if `headers_provider` is provided)
 - `table_properties` (TableProperties) - Target table configuration
 - `options` (StreamConfigurationOptions) - Stream behavior configuration (optional)
-- `tls_config` (TlsConfig) - Custom TLS configuration (optional, defaults to `SecureTlsConfig`)
 - `headers_provider` (HeadersProvider) - Custom headers provider (optional, defaults to OAuth)
 
 Automatically includes these headers (when using default OAuth):
@@ -838,14 +848,36 @@ Represents an active ingestion stream.
 
 **Synchronous Methods:**
 
+**Single Record Ingestion:**
+
+```python
+def ingest_record_offset(record: Union[Message, dict, bytes, str]) -> int
+```
+**RECOMMENDED** - Ingests a single record and returns the offset after queueing.
+
+```python
+def ingest_record_nowait(record: Union[Message, dict, bytes, str]) -> None
+```
+**RECOMMENDED** - Fire-and-forget ingestion. Submits the record without waiting or returning an offset. Best for maximum throughput.
+
 ```python
 def ingest_record(record: Union[Message, dict, bytes, str]) -> RecordAcknowledgment
 ```
-Ingests a single record. Returns a `RecordAcknowledgment` for tracking.
+**DEPRECATED since v0.3.0** - Use `ingest_record_offset()` or `ingest_record_nowait()` instead for better performance.
 
-**Accepted record types:**
-- **JSON mode**: `dict` (SDK serializes) or `str` (pre-serialized JSON string)
-- **Protobuf mode**: `Message` object (SDK serializes) or `bytes` (pre-serialized)
+**Batch Ingestion:**
+
+```python
+def ingest_records_offset(records: List[Union[Message, dict, bytes, str]]) -> int
+```
+Ingests a batch of records and returns the final offset immediately. More efficient than individual calls for bulk ingestion.
+
+```python
+def ingest_records_nowait(records: List[Union[Message, dict, bytes, str]]) -> None
+```
+Fire-and-forget batch ingestion. Submits all records without waiting. Most efficient for bulk ingestion.
+
+**Stream Management:**
 
 ```python
 def flush() -> None
@@ -857,29 +889,57 @@ def close() -> None
 ```
 Flushes and closes the stream gracefully. Always call in a `finally` block.
 
-```python
-def get_state() -> StreamState
-```
-Returns the current stream state.
 
-```python
-@property
-def stream_id() -> str
-```
-Returns the unique stream ID assigned by the server.
+**Accepted Record Types (all methods):**
+- **JSON mode**: `dict` (SDK serializes) or `str` (pre-serialized JSON string)
+- **Protobuf mode**: `Message` object (SDK serializes) or `bytes` (pre-serialized)
 
 ---
 
 **Asynchronous Methods:**
 
+**Single Record Ingestion:**
+
+```python
+async def ingest_record_offset(record: Union[Message, dict, bytes, str]) -> int
+```
+**RECOMMENDED** - Ingests a single record and returns the offset after queueing.
+
+```python
+def ingest_record_nowait(record: Union[Message, dict, bytes, str]) -> None
+```
+**RECOMMENDED** - Fire-and-forget ingestion. Submits the record without waiting. Not async (don't use `await`). Best for maximum throughput.
+
 ```python
 async def ingest_record(record: Union[Message, dict, bytes, str]) -> Awaitable
 ```
-Ingests a single record. Returns an awaitable that completes when the record is durably written.
+**DEPRECATED since v0.3.0** - Use `ingest_record_offset()` or `ingest_record_nowait()` instead for better performance.
 
-**Accepted record types:**
-- **JSON mode**: `dict` (SDK serializes) or `str` (pre-serialized JSON string)
-- **Protobuf mode**: `Message` object (SDK serializes) or `bytes` (pre-serialized)
+**Batch Ingestion:**
+
+```python
+async def ingest_records_offset(records: List[Union[Message, dict, bytes, str]]) -> int
+```
+Ingests a batch of records and returns the final offset immediately. More efficient than individual calls for bulk ingestion.
+
+```python
+def ingest_records_nowait(records: List[Union[Message, dict, bytes, str]]) -> None
+```
+Fire-and-forget batch ingestion. Submits all records without waiting. Not async (don't use `await`). Most efficient for bulk ingestion.
+
+**Offset Tracking:**
+
+```python
+async def wait_for_offset(offset: int) -> None
+```
+Waits for a specific offset to be acknowledged by the server. Useful when you have an offset from `ingest_record_offset()` and want to ensure it's durably written:
+```python
+offset = await stream.ingest_record_offset(record)
+# Do other work...
+await stream.wait_for_offset(offset)  # Ensure this offset is acknowledged
+```
+
+**Stream Management:**
 
 ```python
 async def flush() -> None
@@ -891,16 +951,11 @@ async def close() -> None
 ```
 Flushes and closes the stream gracefully. Always call in a `finally` block.
 
-```python
-def get_state() -> StreamState
-```
-Returns the current stream state.
-
-```python
-@property
-def stream_id() -> str
-```
 Returns the unique stream ID assigned by the server.
+
+**Accepted Record Types (all methods):**
+- **JSON mode**: `dict` (SDK serializes) or `str` (pre-serialized JSON string)
+- **Protobuf mode**: `Message` object (SDK serializes) or `bytes` (pre-serialized)
 
 ---
 
@@ -937,16 +992,6 @@ Abstract base class for providing authentication headers to gRPC streams.
 **Default:** The SDK uses `OAuthHeadersProvider` internally, which handles OAuth 2.0 Client Credentials authentication automatically when you call `create_stream()`.
 
 **Custom Implementation:** For advanced use cases, you can implement a custom `HeadersProvider` by extending the base class and implementing the `get_headers()` method. Custom providers must include both the `authorization` and `x-databricks-zerobus-table-name` headers. See example files for implementation details.
-
----
-
-### TlsConfig
-
-Abstract base class for configuring TLS/SSL settings for gRPC connections.
-
-**Default:** The SDK uses `SecureTlsConfig` with system CA certificates automatically when you call `create_stream()`.
-
-**Custom Implementation:** For advanced use cases (custom CA certificates, mutual TLS, custom cipher suites), you can implement a custom `TlsConfig` by extending the base class and implementing the `to_channel_credentials()` method. See example files for implementation details.
 
 ---
 
@@ -1048,3 +1093,28 @@ NonRetriableException(message: str, cause: Exception = None)
 5. **Monitoring**: Use `ack_callback` to track ingestion progress
 6. **Choose the right API**: Use sync API for low-volume, async API for high-volume ingestion
 7. **Token refresh**: Tokens are automatically refreshed on stream creation and recovery
+
+## Performance Tips
+
+The SDK provides multiple ingestion methods optimized for different use cases:
+
+### Method Comparison
+
+| Method | Throughput | Acknowledgment | Use Case |
+|--------|-----------|----------------|----------|
+| `ingest_record()` | Low | Yes, tracked | When you need individual record tracking |
+| `ingest_record_offset()` | Medium | Returns offset | When you need offsets but not full tracking |
+| `ingest_record_nowait()` | **Highest** | No | Maximum throughput, fire-and-forget |
+
+### Performance Comparison
+
+Benchmarked with 100k records on a local connection:
+
+| Record Size | `ingest_record` (sequential) | `ingest_record_nowait` |
+|-------------|------------------------------|------------------------|
+| 20 bytes    | 0.35 MB/s                    | 7.55 MB/s (20x faster) |
+| 220 bytes   | 2.00 MB/s                    | 77 MB/s (38x faster)   |
+| 750 bytes   | 16 MB/s                      | 257 MB/s (16x faster)  |
+| 10 KB       | 188 MB/s                     | 382 MB/s (2x faster)   |
+
+**Key Insight**: The performance gap is largest for small records due to context switching overhead in sequential awaits. Use batched submission or `nowait` methods for optimal throughput.

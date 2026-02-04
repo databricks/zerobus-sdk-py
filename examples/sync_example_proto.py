@@ -133,7 +133,6 @@ def main():
         # Step 4: Create a stream with OAuth 2.0 authentication
         #
         # The SDK automatically:
-        #   - Uses system CA certificates for TLS
         #   - Includes authorization header with OAuth token
         #   - Includes x-databricks-zerobus-table-name header
         stream = sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options)

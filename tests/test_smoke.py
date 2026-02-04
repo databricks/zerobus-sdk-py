@@ -34,6 +34,31 @@ class TestImports(unittest.TestCase):
         self.assertEqual(RecordType.PROTO.value, 1)
         self.assertEqual(RecordType.JSON.value, 2)
 
+    def test_import_from_shared(self):
+        """Test that recommended import pattern from zerobus.sdk.shared works."""
+        from zerobus.sdk.shared import (
+            HeadersProvider,
+            OAuthHeadersProvider,
+            RecordType,
+            StreamConfigurationOptions,
+            TableProperties,
+        )
+
+        # Verify imports work
+        self.assertEqual(RecordType.PROTO.value, 1)
+        self.assertIsNotNone(StreamConfigurationOptions)
+        self.assertIsNotNone(TableProperties)
+        self.assertIsNotNone(HeadersProvider)
+        self.assertIsNotNone(OAuthHeadersProvider)
+
+    def test_import_from_headers_provider_module(self):
+        """Test that backward-compatible import from headers_provider module works."""
+        from zerobus.sdk.shared.headers_provider import HeadersProvider, OAuthHeadersProvider
+
+        # Verify imports work
+        self.assertIsNotNone(HeadersProvider)
+        self.assertIsNotNone(OAuthHeadersProvider)
+
     def test_import_configuration(self):
         """Test configuration classes are available."""
         options = StreamConfigurationOptions(
