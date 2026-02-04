@@ -8,7 +8,7 @@
 
 We are keen to hear feedback from you on this SDK. Please [file issues](https://github.com/databricks/zerobus-sdk-py/issues), and we will address them.
 
-The Databricks Zerobus Ingest SDK for Python provides a high-performance client for ingesting data directly into Databricks Delta tables using the Zerobus streaming protocol. | See also the [SDK for Rust](https://github.com/databricks/zerobus-sdk-rs) | See also the [SDK for Java](https://github.com/databricks/zerobus-sdk-java)
+The Databricks Zerobus Ingest SDK for Python provides a high-performance, Rust-backed client for ingesting data directly into Databricks Delta tables using the Zerobus streaming protocol. Built on top of the battle-tested [Rust SDK](https://github.com/databricks/zerobus-sdk-rs) using PyO3 bindings, it delivers native performance with a Python-friendly API. | See also the [SDK for Java](https://github.com/databricks/zerobus-sdk-java)
 
 ## Table of Contents
 
@@ -32,14 +32,48 @@ The Databricks Zerobus Ingest SDK for Python provides a high-performance client 
 
 ## Features
 
-- **High-throughput ingestion**: Optimized for high-volume data ingestion
-- **Automatic recovery**: Built-in retry and recovery mechanisms
+- **Rust-backed performance**: Native Rust implementation with Python bindings for maximum throughput and minimal latency
+- **High-throughput ingestion**: Optimized for high-volume data ingestion with native async/await support
+- **Automatic recovery**: Built-in retry and recovery mechanisms from the Rust SDK
 - **Flexible configuration**: Customizable stream behavior and timeouts
 - **Multiple serialization formats**: Support for JSON and Protocol Buffers
 - **OAuth 2.0 authentication**: Secure authentication with client credentials
-- **Configurable TLS**: Custom TLS configuration support for advanced security requirements
-- **Sync and Async support**: Both synchronous and asynchronous APIs
-- **Comprehensive logging**: Detailed logging using Python's standard logging framework
+- **Type safety**: Rust's type system ensures reliability and correctness
+- **Sync and Async support**: Both synchronous and asynchronous Python APIs
+- **Zero-copy operations**: Efficient data handling with minimal overhead
+
+## Architecture
+
+The Python SDK is a thin wrapper around the [Databricks Zerobus Rust SDK](https://github.com/databricks/zerobus-sdk-rs), built using PyO3 bindings:
+
+```
+┌─────────────────────────────────────────┐
+│         Python Application Code         │
+│  (Your code using the Python SDK API)  │
+└─────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────┐
+│       Python SDK (Thin Wrapper)         │
+│    • API compatibility layer            │
+│    • Python types & error handling      │
+└─────────────────────────────────────────┘
+                    │
+                    ▼ (PyO3 bindings)
+┌─────────────────────────────────────────┐
+│         Rust Core Implementation        │
+│    • gRPC communication                 │
+│    • OAuth 2.0 authentication           │
+│    • Stream management & recovery       │
+│    • Protocol encoding/decoding         │
+└─────────────────────────────────────────┘
+```
+
+This architecture provides:
+- **Native performance** through Rust's zero-cost abstractions
+- **Memory safety** without garbage collection overhead
+- **Single source of truth** for all SDK implementations
+- **Python-friendly API** with full type hints and IDE support
 
 ## Requirements
 
@@ -50,9 +84,10 @@ The Databricks Zerobus Ingest SDK for Python provides a high-performance client 
 
 ### Dependencies
 
-- `protobuf` >= 4.25.0, < 7.0
-- `grpcio` >= 1.60.0, < 2.0
-- `requests` >= 2.28.1, < 3
+- `protobuf` >= 4.25.0, < 7.0 (for Protocol Buffer schema handling)
+- `requests` >= 2.28.1, < 3 (only for the `generate_proto` utility tool)
+
+**Note**: All core ingestion functionality (gRPC, OAuth authentication, stream management) is handled by the native Rust implementation. The `requests` dependency is only used by the optional `generate_proto.py` tool for fetching table schemas from Unity Catalog.
 
 ## Quick Start User Guide
 
@@ -135,6 +170,8 @@ git clone https://github.com/databricks/zerobus-sdk-py.git
 cd zerobus-sdk-py
 pip install -e .
 ```
+
+**Note**: Building from source requires Rust toolchain. The SDK uses [maturin](https://github.com/PyO3/maturin) to build Python bindings for the Rust implementation. Pre-built wheels are available on PyPI for common platforms.
 
 ### Choose Your Serialization Format
 

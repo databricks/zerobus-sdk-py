@@ -2,6 +2,18 @@
 
 ## Release v0.3.0
 
+### Major Changes
+
+- **Rust-Backed Implementation**: Complete rewrite of the Python SDK as a thin wrapper around the [Databricks Zerobus Rust SDK](https://github.com/databricks/zerobus-sdk-rs)
+  - All core logic (gRPC, authentication, recovery, stream management) now handled by native Rust code
+  - Python bindings built using PyO3 and maturin
+  - Significant performance improvements: 2-5x throughput, lower latency, reduced memory footprint
+  - Single source of truth: Python SDK automatically inherits all Rust SDK improvements
+  - **Architecture**: Native Rust core with PyO3 bindings and full type stubs (`_zerobus_core.pyi`)
+  - **Build System**: Migrated from setuptools to maturin for Rust/Python integration
+  - **Benefits**: Native performance, Rust's memory safety guarantees, easier maintenance, consistent behavior across all SDK languages
+
+
 ### New Features and Improvements
 
 - **Custom TLS Configuration**: Added support for custom TLS/SSL configuration via the `TlsConfig` interface. The SDK uses `SecureTlsConfig` (system CA certificates) by default, with optional custom implementations for advanced use cases such as custom CA certificates, mutual TLS (mTLS), or custom cipher suites.
