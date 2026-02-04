@@ -1,6 +1,6 @@
 # Default Python version (can be overridden: make build PYTHON=python3.11)
 # Note: SDK requires Python 3.9+ (maturin 1.5+ requires Python 3.7+)
-PYTHON ?= python3.10
+PYTHON ?= python3
 
 ifeq ($(OS),Windows_NT)
     VENV = .venv/Scripts/python
@@ -42,12 +42,9 @@ install:
 	pip install -e .
 
 build:
-	@if [ ! -d .venv ]; then \
-		echo "Virtual environment not found. Run 'make dev' first."; \
-		exit 1; \
-	fi
-	@echo "Building wheel with venv python..."
-	$(VENV) -m build --wheel
+	@echo "Building wheel with $(PYTHON)..."
+	$(PYTHON) -m pip install --upgrade build maturin
+	$(PYTHON) -m build --wheel
 	@echo ""
 	@echo "✓ Wheel built successfully in dist/ directory"
 	@ls -lh dist/*.whl 2>/dev/null || true
