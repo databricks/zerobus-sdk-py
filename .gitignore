@@ -1,7 +1,8 @@
 # Virtual environments
 .venv
 *.venv
-
+venv/
+.backups
 # Build artifacts
 build
 dist
@@ -30,3 +31,13 @@ coverage.xml
 
 # Databricks
 .databricks
+
+# Rust build artifacts
+target/
+Cargo.lock
+*.so
+*.pyd
+*.dylib
+
+# Maturin
+*.whl

@@ -21,11 +21,8 @@ import logging
 import os
 import time
 
-import grpc
-
 from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
 from zerobus.sdk.shared.headers_provider import HeadersProvider
-from zerobus.sdk.shared.tls_config import TlsConfig
 from zerobus.sdk.sync import ZerobusSdk
 
 # Configure logging
@@ -60,7 +57,11 @@ def create_sample_json_record(index):
 
     With JSON mode, you can pass either a dict or a pre-serialized JSON string.
     """
-    return {"device_name": f"sensor-{index % 10}", "temp": 20 + (index % 15), "humidity": 50 + (index % 40)}
+    return {
+        "device_name": f"sensor-{index % 10}",
+        "temp": 20 + (index % 15),
+        "humidity": 50 + (index % 40),
+    }
 
 
 class CustomHeadersProvider(HeadersProvider):
@@ -86,30 +87,6 @@ class CustomHeadersProvider(HeadersProvider):
             ("authorization", f"Bearer {self.custom_token}"),
             ("x-custom-header", "custom-value"),
         ]
-
-
-class CustomTlsConfig(TlsConfig):
-    """
-    Example custom TLS configuration for advanced use cases.
-
-    Note: SecureTlsConfig (using system CA certificates) is the default.
-    Use this only if you have specific requirements such as:
-    - Custom CA certificates
-    - Client certificates (mutual TLS)
-    - Custom cipher suites
-    """
-
-    def __init__(self, root_certificates=None, private_key=None, certificate_chain=None):
-        self.root_certificates = root_certificates
-        self.private_key = private_key
-        self.certificate_chain = certificate_chain
-
-    def to_channel_credentials(self) -> grpc.ChannelCredentials:
-        return grpc.ssl_channel_credentials(
-            root_certificates=self.root_certificates,
-            private_key=self.private_key,
-            certificate_chain=self.certificate_chain,
-        )
 
 
 def main():
@@ -155,54 +132,97 @@ def main():
 
         # Step 4: Create a stream with OAuth 2.0 authentication
         #
-        # Standard method: OAuth 2.0 Client Credentials with default TLS (SecureTlsConfig)
         # The SDK automatically:
         #   - Uses system CA certificates for TLS
         #   - Includes authorization header with OAuth token
         #   - Includes x-databricks-zerobus-table-name header
         stream = sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options)
 
-        # Advanced: Custom TLS configuration (for special use cases only)
-        # Uncomment to use custom TLS (e.g., custom CA certificates, mTLS):
-        # custom_tls = CustomTlsConfig(root_certificates=your_ca_certs)
-        # stream = sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options, custom_tls)
-
         # Advanced: Custom headers provider (for special use cases only)
         # Uncomment to use custom headers instead of OAuth:
         # custom_provider = CustomHeadersProvider(custom_token="your-custom-token")
-        # stream = sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options, headers_provider=custom_provider)
-
-        logger.info(f"✓ Stream created: {stream.stream_id}")
+        # stream = sdk.create_stream(
+        #     CLIENT_ID, CLIENT_SECRET, table_properties, options,
+        #     headers_provider=custom_provider
+        # )
 
         # Step 5: Ingest JSON records synchronously
-        logger.info(f"\nIngesting {NUM_RECORDS} JSON records (blocking mode)...")
+        logger.info(f"\nDemonstrating different ingestion methods...")
         start_time = time.time()
         success_count = 0
 
         try:
-            for i in range(NUM_RECORDS):
-                # Create a record dict
+            # ========================================================================
+            # Method 1: ingest_record_offset() - RECOMMENDED for single records
+            # Returns offset directly without intermediate acknowledgment object
+            # ========================================================================
+            logger.info("\n1. Using ingest_record_offset() - optimized API")
+            for i in range(min(10, NUM_RECORDS)):
                 record_dict = create_sample_json_record(i)
 
-                # Two ways to ingest JSON records:
-
-                # Option 1: Pass a dict (SDK serializes to JSON)
-                if i % 2 == 0:
-                    ack = stream.ingest_record(record_dict)
-
-                # Option 2: Pass a pre-serialized JSON string (client controls serialization)
-                else:
-                    json_string = json.dumps(record_dict)
-                    ack = stream.ingest_record(json_string)
-
-                # Wait for record to be durably written
-                ack.wait_for_ack()
-
+                # Returns offset directly - more efficient than ingest_record()
+                offset = stream.ingest_record_offset(record_dict)
+                logger.info(f"  Record {i} ingested at offset {offset}")
                 success_count += 1
 
-                # Progress indicator
-                if (i + 1) % 10 == 0:
-                    logger.info(f"  Ingested {i + 1} records")
+            # ========================================================================
+            # Method 2: ingest_records_offset() - RECOMMENDED for batch ingestion
+            # Ingests multiple records and returns one offset for the whole batch
+            # ========================================================================
+            logger.info("\n2. Using ingest_records_offset() - batch API")
+            batch_size = 20
+            for batch_num in range(2):
+                batch = []
+                for i in range(batch_size):
+                    idx = 10 + batch_num * batch_size + i
+                    if idx >= NUM_RECORDS:
+                        break
+                    record_dict = create_sample_json_record(idx)
+                    # Can mix dicts and JSON strings in the same batch
+                    if i % 2 == 0:
+                        batch.append(record_dict)
+                    else:
+                        batch.append(json.dumps(record_dict))
+
+                if batch:
+                    # Returns one offset for the whole batch
+                    batch_offset = stream.ingest_records_offset(batch)
+                    logger.info(f"  Batch {batch_num + 1}: {len(batch)} records, offset: {batch_offset}")
+                    success_count += len(batch)
+
+            # ========================================================================
+            # Method 3: ingest_record_nowait() - Maximum throughput (fire-and-forget)
+            # Use when you don't need individual offsets and want maximum speed
+            # ========================================================================
+            logger.info("\n3. Using ingest_record_nowait() - fire-and-forget")
+            remaining = NUM_RECORDS - success_count
+            if remaining > 0:
+                for i in range(min(10, remaining)):
+                    idx = success_count + i
+                    record_dict = create_sample_json_record(idx)
+                    stream.ingest_record_nowait(record_dict)
+                logger.info(f"  Queued {min(10, remaining)} records (no wait for ack)")
+                success_count += min(10, remaining)
+
+            # ========================================================================
+            # Method 4: ingest_records_nowait() - Batch fire-and-forget
+            # Combines batch efficiency with fire-and-forget speed
+            # ========================================================================
+            logger.info("\n4. Using ingest_records_nowait() - batch fire-and-forget")
+            remaining = NUM_RECORDS - success_count
+            if remaining > 0:
+                batch = [create_sample_json_record(success_count + i) for i in range(remaining)]
+                stream.ingest_records_nowait(batch)
+                logger.info(f"  Queued {len(batch)} records in batch (no wait for ack)")
+                success_count += len(batch)
+
+            # ========================================================================
+            # Legacy Method: ingest_record() - DEPRECATED
+            # Returns acknowledgment object that needs separate wait_for_ack() call
+            # Use ingest_record_offset() instead
+            # ========================================================================
+            # ack = stream.ingest_record(record_dict)  # Deprecated
+            # offset = ack.wait_for_ack()  # Extra step needed
 
             end_time = time.time()
             duration_seconds = end_time - start_time
@@ -224,7 +244,6 @@ def main():
             print(f"  Failed: {NUM_RECORDS - success_count}")
             print(f"  Duration: {duration_seconds:.2f} seconds")
             print(f"  Throughput: {records_per_second:.2f} records/sec")
-            print(f"  Stream state: {stream.get_state()}")
             print("  Record type: JSON (explicit)")
             print("=" * 60)
 

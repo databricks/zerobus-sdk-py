@@ -1,13 +1,30 @@
 """
-Asynchronous Python SDK for the Zerobus service.
+Asynchronous Python SDK for the Zerobus service (Rust-backed).
+
+This module provides high-performance asynchronous ingestion backed by a Rust core
+with native async/await support.
 """
 
-from ..shared.tls_config import SecureTlsConfig, TlsConfig
-from .zerobus_sdk import ZerobusSdk, ZerobusStream
+from zerobus.sdk.aio.zerobus_sdk import (
+    HeadersProvider,
+    NonRetriableException,
+    OAuthHeadersProvider,
+    RecordType,
+    StreamConfigurationOptions,
+    TableProperties,
+    ZerobusException,
+    ZerobusSdk,
+    ZerobusStream,
+)
 
 __all__ = [
     "ZerobusSdk",
     "ZerobusStream",
-    "TlsConfig",
-    "SecureTlsConfig",
+    "TableProperties",
+    "StreamConfigurationOptions",
+    "RecordType",
+    "HeadersProvider",
+    "OAuthHeadersProvider",
+    "ZerobusException",
+    "NonRetriableException",
 ]

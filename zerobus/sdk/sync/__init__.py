@@ -1,7 +1,31 @@
 """
-Sync Python SDK for the Zerobus service.
+Sync Python SDK for the Zerobus service (Rust-backed).
+
+This module provides high-performance synchronous ingestion backed by a Rust core.
 """
 
-from .zerobus_sdk import RecordAcknowledgment, ZerobusSdk, ZerobusStream
+from zerobus.sdk.sync.zerobus_sdk import (
+    HeadersProvider,
+    NonRetriableException,
+    OAuthHeadersProvider,
+    RecordAcknowledgment,
+    RecordType,
+    StreamConfigurationOptions,
+    TableProperties,
+    ZerobusException,
+    ZerobusSdk,
+    ZerobusStream,
+)
 
-__all__ = ["ZerobusSdk", "ZerobusStream", "RecordAcknowledgment"]
+__all__ = [
+    "ZerobusSdk",
+    "ZerobusStream",
+    "RecordAcknowledgment",
+    "TableProperties",
+    "StreamConfigurationOptions",
+    "RecordType",
+    "HeadersProvider",
+    "OAuthHeadersProvider",
+    "ZerobusException",
+    "NonRetriableException",
+]

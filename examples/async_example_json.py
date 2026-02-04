@@ -25,12 +25,14 @@ import logging
 import os
 import time
 
-import grpc
-
 from zerobus.sdk.aio import ZerobusSdk
-from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
+from zerobus.sdk.shared import (
+    AckCallback,
+    RecordType,
+    StreamConfigurationOptions,
+    TableProperties,
+)
 from zerobus.sdk.shared.headers_provider import HeadersProvider
-from zerobus.sdk.shared.tls_config import TlsConfig
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -64,7 +66,11 @@ def create_sample_json_record(index):
 
     With JSON mode, you can pass either a dict or a pre-serialized JSON string.
     """
-    return {"device_name": f"sensor-{index % 10}", "temp": 20 + (index % 15), "humidity": 50 + (index % 40)}
+    return {
+        "device_name": f"sensor-{index % 10}",
+        "temp": 20 + (index % 15),
+        "humidity": 50 + (index % 40),
+    }
 
 
 class CustomHeadersProvider(HeadersProvider):
@@ -92,46 +98,23 @@ class CustomHeadersProvider(HeadersProvider):
         ]
 
 
-class CustomTlsConfig(TlsConfig):
+class MyAckCallback(AckCallback):
     """
-    Example custom TLS configuration for advanced use cases.
-
-    Note: SecureTlsConfig (using system CA certificates) is the default.
-    Use this only if you have specific requirements such as:
-    - Custom CA certificates
-    - Client certificates (mutual TLS)
-    - Custom cipher suites
-    """
-
-    def __init__(self, root_certificates=None, private_key=None, certificate_chain=None):
-        self.root_certificates = root_certificates
-        self.private_key = private_key
-        self.certificate_chain = certificate_chain
-
-    def to_channel_credentials(self) -> grpc.ChannelCredentials:
-        return grpc.ssl_channel_credentials(
-            root_certificates=self.root_certificates,
-            private_key=self.private_key,
-            certificate_chain=self.certificate_chain,
-        )
-
-
-def create_ack_callback():
-    """
-    Creates an acknowledgment callback that logs progress.
+    Example acknowledgment callback that logs progress.
 
     The callback is invoked by the SDK whenever records are acknowledged by the server.
     """
-    ack_count = [0]  # Use list to maintain state in closure
 
-    def callback(response):
-        offset = response.durability_ack_up_to_offset
-        ack_count[0] += 1
+    def __init__(self):
+        super().__init__()
+        self.ack_count = 0
+
+    def on_ack(self, offset):
+        """Called when records are acknowledged by the server."""
+        self.ack_count += 1
         # Log every 100 acknowledgments
-        if ack_count[0] % 100 == 0:
-            logger.info(f"  Acknowledged up to offset: {offset} (batch #{ack_count[0]})")
-
-    return callback
+        if self.ack_count % 100 == 0:
+            logger.info(f"  Acknowledged up to offset: {offset} (batch #{self.ack_count})")
 
 
 async def main():
@@ -164,7 +147,7 @@ async def main():
             record_type=RecordType.JSON,
             max_inflight_records=10_000,  # Allow 10k records in flight
             recovery=True,  # Enable automatic recovery
-            ack_callback=create_ack_callback(),  # Track acknowledgments
+            ack_callback=MyAckCallback(),  # Track acknowledgments
         )
         logger.info("✓ Stream configuration created")
 
@@ -175,53 +158,89 @@ async def main():
 
         # Step 4: Create a stream with OAuth 2.0 authentication
         #
-        # Standard method: OAuth 2.0 Client Credentials with default TLS (SecureTlsConfig)
         # The SDK automatically:
         #   - Uses system CA certificates for TLS
         #   - Includes authorization header with OAuth token
         #   - Includes x-databricks-zerobus-table-name header
         stream = await sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options)
 
-        # Advanced: Custom TLS configuration (for special use cases only)
-        # Uncomment to use custom TLS (e.g., custom CA certificates, mTLS):
-        # custom_tls = CustomTlsConfig(root_certificates=your_ca_certs)
-        # stream = await sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options, custom_tls)
-
         # Advanced: Custom headers provider (for special use cases only)
         # Uncomment to use custom headers instead of OAuth:
         # custom_provider = CustomHeadersProvider(custom_token="your-custom-token")
-        # stream = await sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options, headers_provider=custom_provider)
-
-        logger.info(f"✓ Stream created: {stream.stream_id}")
+        # stream = await sdk.create_stream(
+        #     CLIENT_ID, CLIENT_SECRET, table_properties, options,
+        #     headers_provider=custom_provider
+        # )
 
         # Step 5: Ingest JSON records asynchronously
-        logger.info(f"\nIngesting {NUM_RECORDS} JSON records (non-blocking mode)...")
+        logger.info(f"\nDemonstrating different async ingestion methods...")
         start_time = time.time()
+        success_count = 0
 
         try:
-            # Store futures for later waiting
-            futures = []
-
-            for i in range(NUM_RECORDS):
-                # Create a record dict
+            # ========================================================================
+            # Method 1: ingest_record_offset() - Get offset for each record
+            # Best for when you need individual offsets
+            # ========================================================================
+            logger.info("\n1. Using ingest_record_offset() - individual offsets")
+            for i in range(min(10, NUM_RECORDS)):
                 record_dict = create_sample_json_record(i)
 
-                # Two ways to ingest JSON records:
+                # Returns offset directly as awaitable
+                offset = await stream.ingest_record_offset(record_dict)
+                logger.info(f"  Record {i} ingested at offset {offset}")
+                success_count += 1
 
-                # Option 1: Pass a dict (SDK serializes to JSON)
-                if i % 2 == 0:
-                    future = await stream.ingest_record(record_dict)
+            # ========================================================================
+            # Method 2: ingest_records_offset() - Batch with offset
+            # Best for batch processing where you need one offset for the batch
+            # ========================================================================
+            logger.info("\n2. Using ingest_records_offset() - batch with offset")
+            batch_size = 20
+            for batch_num in range(2):
+                batch = []
+                for i in range(batch_size):
+                    idx = 10 + batch_num * batch_size + i
+                    if idx >= NUM_RECORDS:
+                        break
+                    record_dict = create_sample_json_record(idx)
+                    # Can mix dicts and JSON strings
+                    if i % 2 == 0:
+                        batch.append(record_dict)
+                    else:
+                        batch.append(json.dumps(record_dict))
 
-                # Option 2: Pass a pre-serialized JSON string (client controls serialization)
-                else:
-                    json_string = json.dumps(record_dict)
-                    future = await stream.ingest_record(json_string)
+                if batch:
+                    batch_offset = await stream.ingest_records_offset(batch)
+                    logger.info(f"  Batch {batch_num + 1}: {len(batch)} records, offset: {batch_offset}")
+                    success_count += len(batch)
 
-                futures.append(future)
+            # ========================================================================
+            # Method 3: ingest_record_nowait() - Fire-and-forget for max throughput
+            # Best for high-throughput scenarios with callback-based ack tracking
+            # ========================================================================
+            logger.info("\n3. Using ingest_record_nowait() - fire-and-forget")
+            remaining = NUM_RECORDS - success_count
+            if remaining > 0:
+                for i in range(min(100, remaining)):
+                    idx = success_count + i
+                    record_dict = create_sample_json_record(idx)
+                    stream.ingest_record_nowait(record_dict)
 
-                # Progress indicator
-                if (i + 1) % 100 == 0:
-                    logger.info(f"  Submitted {i + 1} records")
+                logger.info(f"  Queued {min(100, remaining)} records (tracking via callback)")
+                success_count += min(100, remaining)
+
+            # ========================================================================
+            # Method 4: ingest_records_nowait() - Batch fire-and-forget
+            # Best for maximum throughput with batch efficiency
+            # ========================================================================
+            logger.info("\n4. Using ingest_records_nowait() - batch fire-and-forget")
+            remaining = NUM_RECORDS - success_count
+            if remaining > 0:
+                batch = [create_sample_json_record(success_count + i) for i in range(remaining)]
+                stream.ingest_records_nowait(batch)
+                logger.info(f"  Queued {len(batch)} records in batch (tracking via callback)")
+                success_count += len(batch)
 
             submit_end_time = time.time()
             submit_duration = submit_end_time - start_time
@@ -230,11 +249,7 @@ async def main():
             # Step 6: Flush and wait for all records to be durably written
             logger.info("\nFlushing stream and waiting for durability...")
             await stream.flush()
-            logger.info("✓ Stream flushed")
-
-            # Optionally wait for all individual futures
-            logger.info("Waiting for all records to be acknowledged...")
-            await asyncio.gather(*futures)
+            logger.info("✓ Stream flushed (all records acknowledged)")
 
             end_time = time.time()
             total_duration = end_time - start_time

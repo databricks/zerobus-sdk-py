@@ -7,10 +7,12 @@ else
     VENV = .venv/bin/python
 endif
 
-.PHONY: dev install build clean install-wheel help fmt lint test
+.PHONY: dev install build clean install-wheel help fmt lint test build-rust develop-rust clean-rust
 
 help:
 	@echo "Available targets:"
+	@echo ""
+	@echo "Python targets:"
 	@echo "  make build          - Build wheel package (use PYTHON=python3.X to specify version)"
 	@echo "  make install-wheel  - Install the built wheel"
 	@echo "  make install        - Install package directly (editable mode)"
@@ -20,6 +22,13 @@ help:
 	@echo "  make lint           - Run linting with pycodestyle"
 	@echo "  make test           - Run unit tests with pytest"
 	@echo "  make coverage       - Run coverage and open HTML report"
+	@echo ""
+	@echo "Rust targets (v0.3.0+):"
+	@echo "  make build-rust     - Build Rust extension (release mode)"
+	@echo "  make develop-rust   - Build and install Rust extension (dev mode, requires virtualenv)"
+	@echo "  make test-rust      - Run Rust unit tests"
+	@echo "  make clean-rust     - Remove Rust build artifacts"
+	@echo "  make test-imports   - Test Python imports work correctly"
 	@echo ""
 	@echo "Example: make build PYTHON=python3.11"
 
@@ -62,3 +71,25 @@ lint:
 
 test:
 	$(VENV) -m pytest --cov=zerobus --cov-report html --cov-report xml tests
+
+# Rust targets (v0.3.0+)
+build-rust:
+	@echo "Building Rust extension (release mode)..."
+	@which maturin >/dev/null 2>&1 || (echo "Error: maturin not found. Install with: pip install maturin" && exit 1)
+	maturin build --release --manifest-path rust/Cargo.toml
+	@echo "✓ Rust extension built successfully"
+	@ls -lh target/wheels/*.whl 2>/dev/null || echo "Note: Wheel creation may require patchelf (Linux only)"
+
+develop-rust:
+	@echo "Building and installing Rust extension (development mode)..."
+	@which maturin >/dev/null 2>&1 || (echo "Error: maturin not found. Install with: pip install maturin" && exit 1)
+	maturin develop --manifest-path rust/Cargo.toml
+	@echo "✓ Rust extension installed in development mode"
+
+clean-rust:
+	@echo "Cleaning Rust build artifacts..."
+	rm -rf target/
+	rm -rf rust/target/
+	rm -f zerobus/_zerobus_core.so
+	rm -f Cargo.lock
+	@echo "✓ Rust artifacts cleaned"

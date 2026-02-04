@@ -1,36 +1,24 @@
-from . import zerobus_service_pb2, zerobus_service_pb2_grpc
-from .definitions import (
-    NOT_RETRIABLE_GRPC_CODES,
+"""
+Shared utilities for Zerobus SDK.
+
+This module re-exports common types from the Rust core for backward compatibility.
+"""
+
+# Re-export from Rust core for backward compatibility
+from zerobus._zerobus_core import (
+    AckCallback,
     NonRetriableException,
     RecordType,
     StreamConfigurationOptions,
-    StreamState,
     TableProperties,
     ZerobusException,
-    _StreamFailureInfo,
-    _StreamFailureType,
-    get_zerobus_token,
-    log_and_get_exception,
 )
-from .headers_provider import HeadersProvider, OAuthHeadersProvider
-from .tls_config import SecureTlsConfig, TlsConfig
 
 __all__ = [
-    "TableProperties",
-    "StreamConfigurationOptions",
     "RecordType",
+    "StreamConfigurationOptions",
+    "TableProperties",
     "ZerobusException",
-    "StreamState",
-    "_StreamFailureType",
-    "_StreamFailureInfo",
-    "zerobus_service_pb2_grpc",
-    "zerobus_service_pb2",
     "NonRetriableException",
-    "NOT_RETRIABLE_GRPC_CODES",
-    "log_and_get_exception",
-    "get_zerobus_token",
-    "OAuthHeadersProvider",
-    "HeadersProvider",
-    "SecureTlsConfig",
-    "TlsConfig",
+    "AckCallback",
 ]
