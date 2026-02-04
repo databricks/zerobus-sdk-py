@@ -29,6 +29,9 @@ The Databricks Zerobus Ingest SDK for Python provides a high-performance, Rust-b
 - [Error Handling](#error-handling)
 - [API Reference](#api-reference)
 - [Best Practices](#best-practices)
+- [Handling Stream Failures](#handling-stream-failures)
+- [Performance Tips](#performance-tips)
+- [Debugging](#debugging)
 
 ## Features
 
@@ -877,6 +880,27 @@ def ingest_records_nowait(records: List[Union[Message, dict, bytes, str]]) -> No
 ```
 Fire-and-forget batch ingestion. Submits all records without waiting. Most efficient for bulk ingestion.
 
+
+```python
+def get_unacked_records() -> List[bytes]
+```
+Returns a list of unacknowledged records (as raw bytes). These are records that have been ingested but not yet acknowledged by the server.
+
+**Important**: Records are returned in their serialized form:
+- **JSON mode**: Decode with `json.loads(record.decode('utf-8'))`
+- **Protobuf mode**: Deserialize with `YourMessage.FromString(record)` or use as-is if pre-serialized
+
+Useful for recovery and monitoring.
+
+```python
+def get_unacked_batches() -> List[List[bytes]]
+```
+Returns a list of unacknowledged batches, where each batch is a list of records (as raw bytes). These are batches that have been sent but not yet acknowledged by the server.
+
+**Important**: Records are returned in their serialized form (see `get_unacked_records()` for decoding).
+
+Useful for batch retry logic.
+
 **Stream Management:**
 
 ```python
@@ -938,6 +962,28 @@ offset = await stream.ingest_record_offset(record)
 # Do other work...
 await stream.wait_for_offset(offset)  # Ensure this offset is acknowledged
 ```
+
+**Stream Monitoring:**
+
+```python
+async def get_unacked_records() -> List[bytes]
+```
+Returns a list of unacknowledged records (as raw bytes). These are records that have been ingested but not yet acknowledged by the server.
+
+**Important**: Records are returned in their serialized form:
+- **JSON mode**: Decode with `json.loads(record.decode('utf-8'))`
+- **Protobuf mode**: Deserialize with `YourMessage.FromString(record)` or use as-is if pre-serialized
+
+Useful for recovery and monitoring.
+
+```python
+async def get_unacked_batches() -> List[List[bytes]]
+```
+Returns a list of unacknowledged batches, where each batch is a list of records (as raw bytes). These are batches that have been sent but not yet acknowledged by the server.
+
+**Important**: Records are returned in their serialized form (see `get_unacked_records()` for decoding).
+
+Useful for batch retry logic.
 
 **Stream Management:**
 
@@ -1094,6 +1140,149 @@ NonRetriableException(message: str, cause: Exception = None)
 6. **Choose the right API**: Use sync API for low-volume, async API for high-volume ingestion
 7. **Token refresh**: Tokens are automatically refreshed on stream creation and recovery
 
+## Handling Stream Failures
+
+**Note**: The SDK automatically handles retries and recovery for transient errors. These methods are only needed when a stream has **permanently failed** (e.g., non-retriable error, max retries exceeded, or stream closed).
+
+When a stream permanently fails, you can retrieve unacknowledged records to save them or retry with a new stream.
+
+### When to Use These Methods
+
+Use `get_unacked_records()` and `get_unacked_batches()` when:
+- Stream closed due to non-retriable error
+- Maximum retry attempts exceeded
+- You need to abandon the stream and save pending data
+- Implementing custom failure handling logic
+
+### Retrieving Unacknowledged Records After Failure
+
+**Synchronous:**
+```python
+from zerobus import NonRetriableException
+
+try:
+    for i in range(10000):
+        stream.ingest_record_offset(record)
+    stream.flush()
+except NonRetriableException as e:
+    # Stream failed permanently - retrieve unacked records
+    print(f"Stream failed: {e}")
+    unacked_records = stream.get_unacked_records()  # Returns List[bytes]
+    unacked_batches = stream.get_unacked_batches()  # Returns List[List[bytes]]
+
+    print(f"Lost {len(unacked_records)} unacknowledged records")
+
+    # Save to file or database for later retry
+    with open('failed_records.bin', 'wb') as f:
+        for record in unacked_records:
+            f.write(len(record).to_bytes(4, 'big'))  # Write length prefix
+            f.write(record)
+```
+
+**Asynchronous:**
+```python
+from zerobus import NonRetriableException
+
+try:
+    for i in range(10000):
+        await stream.ingest_record_offset(record)
+    await stream.flush()
+except NonRetriableException as e:
+    # Stream failed permanently - retrieve unacked records
+    print(f"Stream failed: {e}")
+    unacked_records = await stream.get_unacked_records()  # Returns List[bytes]
+    unacked_batches = await stream.get_unacked_batches()  # Returns List[List[bytes]]
+
+    print(f"Lost {len(unacked_records)} unacknowledged records")
+
+    # Save for later retry with a new stream
+    import pickle
+    with open('failed_records.pkl', 'wb') as f:
+        pickle.dump(unacked_records, f)
+```
+
+### Retrying with a New Stream
+
+After retrieving unacked records, create a new stream to retry them:
+
+**JSON Mode:**
+```python
+import json
+
+# After stream failure, get unacked records
+unacked_records = stream.get_unacked_records()
+print(f"Retrieved {len(unacked_records)} unacked records")
+
+# Close the failed stream
+stream.close()
+
+# Create a new stream
+new_stream = sdk.create_stream(client_id, client_secret, table_properties, options)
+
+# Retry unacked records with the new stream
+for record_bytes in unacked_records:
+    # Option 1: Pass bytes directly (most efficient)
+    new_stream.ingest_record_offset(record_bytes)
+
+    # Option 2: Decode and inspect before retrying
+    # record_dict = json.loads(record_bytes.decode('utf-8'))
+    # print(f"Retrying: {record_dict}")
+    # new_stream.ingest_record_offset(record_dict)
+
+new_stream.flush()
+new_stream.close()
+```
+
+**Protobuf Mode:**
+```python
+import your_proto_pb2
+
+# After stream failure, get unacked records
+unacked_records = stream.get_unacked_records()
+print(f"Retrieved {len(unacked_records)} unacked records")
+
+# Close the failed stream
+stream.close()
+
+# Create a new stream
+new_stream = sdk.create_stream(client_id, client_secret, table_properties, options)
+
+# Retry unacked records with the new stream
+for record_bytes in unacked_records:
+    # Option 1: Pass bytes directly (most efficient)
+    new_stream.ingest_record_offset(record_bytes)
+
+    # Option 2: Deserialize and inspect before retrying
+    # record = your_proto_pb2.YourMessage()
+    # record.ParseFromString(record_bytes)
+    # print(f"Retrying: {record}")
+    # new_stream.ingest_record_offset(record)
+
+new_stream.flush()
+new_stream.close()
+```
+
+### Batch Retry
+
+```python
+# Get unacknowledged batches from failed stream
+unacked_batches = stream.get_unacked_batches()
+print(f"Retrieved {len(unacked_batches)} unacked batches")
+
+# Close the failed stream
+stream.close()
+
+# Create a new stream
+new_stream = sdk.create_stream(client_id, client_secret, table_properties, options)
+
+# Retry entire batches at once
+for batch in unacked_batches:
+    new_stream.ingest_records_offset(batch)  # Batch retry
+
+new_stream.flush()
+new_stream.close()
+```
+
 ## Performance Tips
 
 The SDK provides multiple ingestion methods optimized for different use cases:
@@ -1118,3 +1307,30 @@ Benchmarked with 100k records on a local connection:
 | 10 KB       | 188 MB/s                     | 382 MB/s (2x faster)   |
 
 **Key Insight**: The performance gap is largest for small records due to context switching overhead in sequential awaits. Use batched submission or `nowait` methods for optimal throughput.
+
+## Debugging
+
+### Enabling Debug Logs
+
+The SDK uses Rust's `tracing` framework for logging. You can control log levels using the `RUST_LOG` environment variable:
+
+```bash
+# Set log level to debug for all components
+export RUST_LOG=debug
+
+# Set log level to trace for detailed debugging
+export RUST_LOG=trace
+
+# Set log level only for zerobus SDK components
+export RUST_LOG=zerobus_sdk=debug
+
+# Multiple targets with different levels
+export RUST_LOG=zerobus_sdk=trace,tokio=info
+```
+
+**Log Levels** (from least to most verbose):
+- `error` - Only errors
+- `warn` - Warnings and errors
+- `info` - Informational messages (default)
+- `debug` - Detailed debugging information
+- `trace` - Very detailed trace information

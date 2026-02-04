@@ -126,8 +126,22 @@ class ZerobusStream:
         return await self._inner.close()
 
     async def get_unacked_records(self):
-        """Get list of unacknowledged records."""
+        """
+        Get list of unacknowledged records.
+
+        Returns:
+            List[bytes]: List of record payloads that have been ingested but not yet acknowledged.
+        """
         return await self._inner.get_unacked_records()
+
+    async def get_unacked_batches(self):
+        """
+        Get list of unacknowledged batches.
+
+        Returns:
+            List[List[bytes]]: List of batches, where each batch is a list of record payloads.
+        """
+        return await self._inner.get_unacked_batches()
 
     @property
     def stream_id(self):

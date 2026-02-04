@@ -303,9 +303,63 @@ impl ZerobusStream {
         })
     }
 
-    /// Get unacked records (placeholder for compatibility)
+    /// Get unacknowledged records
     fn get_unacked_records<'py>(&self, py: Python<'py>) -> PyResult<&'py PyAny> {
-        future_into_py(py, async move { Ok::<Vec<PyObject>, PyErr>(vec![]) })
+        let stream_clone = self.inner.clone();
+
+        let rust_future = async move {
+            let stream_guard = stream_clone.read().await;
+            let records = stream_guard
+                .get_unacked_records()
+                .await
+                .map_err(|e| Python::with_gil(|_py| map_rust_error_to_pyerr(e)))?;
+
+            // Convert records to Python bytes objects
+            Python::with_gil(|py| {
+                let py_records: Vec<PyObject> = records
+                    .into_iter()
+                    .map(|record| match record {
+                        EncodedRecord::Proto(bytes) => pyo3::types::PyBytes::new(py, &bytes).into(),
+                        EncodedRecord::Json(json_str) => pyo3::types::PyBytes::new(py, json_str.as_bytes()).into(),
+                    })
+                    .collect();
+                Ok(py_records)
+            })
+        };
+
+        future_into_py(py, rust_future)
+    }
+
+    /// Get unacknowledged batches
+    fn get_unacked_batches<'py>(&self, py: Python<'py>) -> PyResult<&'py PyAny> {
+        let stream_clone = self.inner.clone();
+
+        let rust_future = async move {
+            let stream_guard = stream_clone.read().await;
+            let batches = stream_guard
+                .get_unacked_batches()
+                .await
+                .map_err(|e| Python::with_gil(|_py| map_rust_error_to_pyerr(e)))?;
+
+            // Convert batches to Python list of lists of bytes
+            Python::with_gil(|py| {
+                let py_batches: Vec<Vec<PyObject>> = batches
+                    .into_iter()
+                    .map(|batch| {
+                        batch
+                            .into_iter()
+                            .map(|record| match record {
+                                EncodedRecord::Proto(bytes) => pyo3::types::PyBytes::new(py, &bytes).into(),
+                                EncodedRecord::Json(json_str) => pyo3::types::PyBytes::new(py, json_str.as_bytes()).into(),
+                            })
+                            .collect()
+                    })
+                    .collect();
+                Ok(py_batches)
+            })
+        };
+
+        future_into_py(py, rust_future)
     }
 }
 

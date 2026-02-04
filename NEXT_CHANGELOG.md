@@ -16,6 +16,10 @@
 
 ### New Features and Improvements
 
+- **Configurable Logging**: Added support for `RUST_LOG` environment variable to control log levels
+  - Users can now set `RUST_LOG=debug` or `RUST_LOG=trace` for detailed diagnostics
+  - Default level is `info` when not specified
+  - Supports granular control: `RUST_LOG=zerobus_sdk=trace,tokio=info`
 - **Flexible Record Serialization**: `ingest_record()` now accepts multiple input types, giving clients control over serialization:
   - **JSON mode**: Accepts both `dict` (SDK serializes) and `str` (pre-serialized JSON string)
   - **Protobuf mode**: Accepts both `Message` objects (SDK serializes) and `bytes` (pre-serialized)
@@ -31,6 +35,13 @@
 - Updated examples README with clear explanations of serialization options
 
 ### Internal Changes
+
+- **Implemented `get_unacked_records()` and `get_unacked_batches()`**: Return actual unacknowledged records/batches (as bytes) for recovery and monitoring
+  - `get_unacked_records()` returns `List[bytes]` of unacknowledged record payloads
+  - `get_unacked_batches()` returns `List[List[bytes]]` where each batch contains record payloads
+  - Available in both sync and async APIs
+  - Useful for implementing custom retry logic or monitoring stream health
+- Added `env-filter` feature to `tracing-subscriber` dependency for `RUST_LOG` support
 
 - **generate_proto tool**: Added support for TIMESTAMP_NTZ and VARIANT data types
   - TIMESTAMP_NTZ maps to int64 (timestamp without timezone, microseconds since epoch)

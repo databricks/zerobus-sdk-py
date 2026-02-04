@@ -2,16 +2,19 @@
 
 use pyo3::prelude::*;
 
-mod common;
-mod auth;
-mod sync_wrapper;
 mod async_wrapper;
+mod auth;
+mod common;
+mod sync_wrapper;
 
 #[pymodule]
 fn _zerobus_core(py: Python, m: &PyModule) -> PyResult<()> {
-    // Initialize tracing
+    // Initialize tracing with environment variable support
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
         .try_init()
         .ok();
 
@@ -28,8 +31,14 @@ fn _zerobus_core(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<common::AckCallback>()?;
 
     // Add exception types
-    m.add("ZerobusException", py.get_type::<common::ZerobusException>())?;
-    m.add("NonRetriableException", py.get_type::<common::NonRetriableException>())?;
+    m.add(
+        "ZerobusException",
+        py.get_type::<common::ZerobusException>(),
+    )?;
+    m.add(
+        "NonRetriableException",
+        py.get_type::<common::NonRetriableException>(),
+    )?;
 
     // Add authentication classes
     m.add_class::<auth::HeadersProvider>()?;
