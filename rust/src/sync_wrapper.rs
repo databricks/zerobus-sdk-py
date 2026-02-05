@@ -2,7 +2,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyList};
 use tokio::runtime::Runtime;
@@ -10,12 +9,13 @@ use tokio::sync::RwLock;
 
 use databricks_zerobus_ingest_sdk::{
     databricks::zerobus::RecordType as RustRecordType, AckCallback as RustAckCallback,
-    EncodedRecord, HeadersProvider as RustHeadersProvider, OffsetId,
+    EncodedRecord, OffsetId,
     StreamConfigurationOptions as RustStreamOptions, TableProperties as RustTableProperties,
     ZerobusError as RustError, ZerobusResult as RustResult, ZerobusSdk as RustSdk,
     ZerobusStream as RustStream,
 };
 
+use crate::auth::HeadersProviderWrapper;
 use crate::common::{map_error, AckCallback, StreamConfigurationOptions, TableProperties};
 
 type AckFuture = Pin<Box<dyn Future<Output = RustResult<OffsetId>> + Send>>;
@@ -110,45 +110,6 @@ impl RustAckCallback for AckCallbackWrapper {
 }
 
 // =============================================================================
-// HEADERS PROVIDER WRAPPER
-// =============================================================================
-
-pub struct HeadersProviderWrapper {
-    py_obj: PyObject,
-}
-
-impl HeadersProviderWrapper {
-    pub fn new(py_obj: PyObject) -> Self {
-        Self { py_obj }
-    }
-}
-
-#[async_trait]
-impl RustHeadersProvider for HeadersProviderWrapper {
-    async fn get_headers(&self) -> RustResult<std::collections::HashMap<&'static str, String>> {
-        let headers_vec: Vec<(String, String)> = Python::with_gil(|py| {
-            let method = self.py_obj.getattr(py, "get_headers")?;
-            let result = method.call0(py)?;
-            let headers: Vec<(String, String)> = result.extract(py)?;
-            Ok::<_, PyErr>(headers)
-        })
-        .map_err(|e: PyErr| {
-            let msg = format!("Python HeadersProvider error: {}", e);
-            RustError::CreateStreamError(tonic::Status::new(tonic::Code::InvalidArgument, msg))
-        })?;
-
-        // Convert Vec<(String, String)> to HashMap<&'static str, String>
-        // Note: We need to leak strings to get 'static lifetime
-        let mut map = std::collections::HashMap::new();
-        for (key, value) in headers_vec {
-            let key_static: &'static str = Box::leak(key.into_boxed_str());
-            map.insert(key_static, value);
-        }
-        Ok(map)
-    }
-}
-
-// =============================================================================
 // RECORD ACKNOWLEDGMENT
 // =============================================================================
 
@@ -205,7 +166,10 @@ pub struct ZerobusStream {
 #[allow(deprecated)]
 impl ZerobusStream {
     /// Ingest a single record and return RecordAcknowledgment (legacy API)
-    #[deprecated(since = "0.3.0", note = "Use ingest_record_offset() instead for better performance")]
+    #[deprecated(
+        since = "0.3.0",
+        note = "Use ingest_record_offset() instead for better performance"
+    )]
     fn ingest_record(&self, payload: &PyAny) -> PyResult<RecordAcknowledgment> {
         let record_payload = extract_record_payload(payload)?;
         let stream_clone = self.inner.clone();
@@ -365,8 +329,12 @@ impl ZerobusStream {
                     let py_records: Vec<PyObject> = records
                         .into_iter()
                         .map(|record| match record {
-                            EncodedRecord::Proto(bytes) => pyo3::types::PyBytes::new(py, &bytes).into(),
-                            EncodedRecord::Json(json_str) => pyo3::types::PyBytes::new(py, json_str.as_bytes()).into(),
+                            EncodedRecord::Proto(bytes) => {
+                                pyo3::types::PyBytes::new(py, &bytes).into()
+                            }
+                            EncodedRecord::Json(json_str) => {
+                                pyo3::types::PyBytes::new(py, json_str.as_bytes()).into()
+                            }
                         })
                         .collect();
                     Ok(py_records)
@@ -396,8 +364,12 @@ impl ZerobusStream {
                             batch
                                 .into_iter()
                                 .map(|record| match record {
-                                    EncodedRecord::Proto(bytes) => pyo3::types::PyBytes::new(py, &bytes).into(),
-                                    EncodedRecord::Json(json_str) => pyo3::types::PyBytes::new(py, json_str.as_bytes()).into(),
+                                    EncodedRecord::Proto(bytes) => {
+                                        pyo3::types::PyBytes::new(py, &bytes).into()
+                                    }
+                                    EncodedRecord::Json(json_str) => {
+                                        pyo3::types::PyBytes::new(py, json_str.as_bytes()).into()
+                                    }
                                 })
                                 .collect()
                         })
@@ -507,14 +479,15 @@ impl ZerobusSdk {
         let stream = py.allow_threads(|| {
             runtime.block_on(async move {
                 let sdk_guard = sdk.read().await;
-                sdk_guard.create_stream(
-                    rust_table_props,
-                    client_id,
-                    client_secret,
-                    Some(rust_options),
-                )
-                .await
-                .map_err(|e| Python::with_gil(|_py| map_rust_error_to_pyerr(e)))
+                sdk_guard
+                    .create_stream(
+                        rust_table_props,
+                        client_id,
+                        client_secret,
+                        Some(rust_options),
+                    )
+                    .await
+                    .map_err(|e| Python::with_gil(|_py| map_rust_error_to_pyerr(e)))
             })
         })?;
 
@@ -570,13 +543,14 @@ impl ZerobusSdk {
         let stream = py.allow_threads(|| {
             runtime.block_on(async move {
                 let sdk_guard = sdk.read().await;
-                sdk_guard.create_stream_with_headers_provider(
-                    rust_table_props,
-                    provider,
-                    Some(rust_options),
-                )
-                .await
-                .map_err(|e| Python::with_gil(|_py| map_rust_error_to_pyerr(e)))
+                sdk_guard
+                    .create_stream_with_headers_provider(
+                        rust_table_props,
+                        provider,
+                        Some(rust_options),
+                    )
+                    .await
+                    .map_err(|e| Python::with_gil(|_py| map_rust_error_to_pyerr(e)))
             })
         })?;
 
@@ -596,7 +570,8 @@ impl ZerobusSdk {
             runtime.block_on(async move {
                 let guard = old_stream_inner.read().await;
                 let sdk_guard = sdk.read().await;
-                sdk_guard.recreate_stream(&*guard)
+                sdk_guard
+                    .recreate_stream(&*guard)
                     .await
                     .map_err(|e| Python::with_gil(|_py| map_rust_error_to_pyerr(e)))
             })

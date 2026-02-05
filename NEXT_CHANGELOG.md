@@ -57,6 +57,24 @@
   - Old: `sdk.create_stream_with_headers_provider(custom_provider, table_properties, options)`
   - New: `sdk.create_stream(client_id, client_secret, table_properties, options, headers_provider=custom_provider)`
 
+- **BREAKING**: Removed `StreamState` enum
+  - **Reason**: Internal state management now handled by Rust SDK
+  - **Impact**: `get_state()` method no longer returns a meaningful state enum
+  - **Migration**: Not typically used in primary workflows; remove any code that depends on `StreamState`
+
+- **Changed**: `get_unacked_records()` implementation (backward compatible)
+  - **Old**: Returned `Iterator` that yielded record payloads from the Python wrapper's internal queue
+  - **New**: Returns `Iterator[bytes]` that yields unacknowledged record payloads directly from the Rust SDK
+  - **Migration**: No migration needed - iteration pattern remains the same: `for record in stream.get_unacked_records():`
+  - **Benefit**: Direct access to Rust SDK's unacked records; more accurate representation of what hasn't been acknowledged by the server
+  - **Note**: Still returns an iterator for backward compatibility and memory efficiency
+
+- **BREAKING**: Changed `ack_callback` signature in `StreamConfigurationOptions`
+  - **Old**: Callback received detailed acknowledgment response object
+  - **New**: Callback receives single `offset: int` parameter
+  - **Migration**: Update callback signature from `def on_ack(self, response)` to `def on_ack(self, offset: int)`
+  - **Impact**: Simplified API; offset is the primary acknowledgment information needed
+
 ### Deprecations
 
 - **DEPRECATED**: `ingest_record()` method (both sync and async)
@@ -70,7 +88,7 @@
 ### API Changes
 
 - Added optional `headers_provider` parameter to `create_stream()` methods
-  - Defaults to `OAuthHeadersProvider()` (OAuth 2.0 Client Credentials) when not provided
+  - Defaults to internal OAuth 2.0 Client Credentials authentication when not provided
 - Widened `ingest_record()` type signature to accept:
   - JSON mode: `Union[dict, str]` (previously `str` only)
   - Protobuf mode: `Union[Message, bytes]` (previously `Message` only)

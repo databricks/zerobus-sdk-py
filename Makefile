@@ -14,22 +14,19 @@ help:
 	@echo "Available targets:"
 	@echo ""
 	@echo "Python targets:"
-	@echo "  make build          - Build wheel package (use PYTHON=python3.X to specify version)"
+	@echo "  make build          - Build *release* wheel (Rust + Python)"
 	@echo "  make install-wheel  - Install the built wheel"
 	@echo "  make install        - Install package directly (editable mode)"
 	@echo "  make dev            - Set up development environment"
 	@echo "  make clean          - Remove build artifacts"
-	@echo "  make fmt            - Format code with black, autoflake, and isort"
-	@echo "  make lint           - Run linting with pycodestyle"
-	@echo "  make test           - Run unit tests with pytest"
-	@echo "  make coverage       - Run coverage and open HTML report"
+	@echo "  make fmt            - Format code"
+	@echo "  make lint           - Run linting"
+	@echo "  make test           - Run unit tests"
 	@echo ""
-	@echo "Rust targets (v0.3.0+):"
-	@echo "  make build-rust     - Build Rust extension (release mode)"
-	@echo "  make develop-rust   - Build and install Rust extension (dev mode, requires virtualenv)"
-	@echo "  make test-rust      - Run Rust unit tests"
+	@echo "Rust targets:"
+	@echo "  make build-rust     - Build Rust extension only (release)"
+	@echo "  make develop-rust   - Build and install Rust extension (dev mode)"
 	@echo "  make clean-rust     - Remove Rust build artifacts"
-	@echo "  make test-imports   - Test Python imports work correctly"
 	@echo ""
 	@echo "Example: make build PYTHON=python3.11"
 
@@ -42,11 +39,11 @@ install:
 	pip install -e .
 
 build:
-	@echo "Building wheel with $(PYTHON)..."
-	$(PYTHON) -m pip install --upgrade build maturin
-	$(PYTHON) -m build --wheel
+	@echo "Building release wheel with $(PYTHON)..."
+	$(PYTHON) -m pip install --upgrade pip maturin
+	maturin build --release --strip --out dist
 	@echo ""
-	@echo "✓ Wheel built successfully in dist/ directory"
+	@echo "✓ Release wheel built successfully in dist/"
 	@ls -lh dist/*.whl 2>/dev/null || true
 
 install-wheel:
@@ -59,7 +56,7 @@ install-wheel:
 	@echo "✓ Wheel installed successfully"
 
 clean:
-	rm -fr dist *.egg-info .pytest_cache build htmlcov .venv
+	rm -rf dist *.egg-info .pytest_cache build htmlcov .venv
 
 fmt:
 	$(VENV) -m black zerobus examples tests
@@ -79,7 +76,6 @@ build-rust:
 	@which maturin >/dev/null 2>&1 || (echo "Error: maturin not found. Install with: pip install maturin" && exit 1)
 	maturin build --release --manifest-path rust/Cargo.toml
 	@echo "✓ Rust extension built successfully"
-	@ls -lh target/wheels/*.whl 2>/dev/null || echo "Note: Wheel creation may require patchelf (Linux only)"
 
 develop-rust:
 	@echo "Building and installing Rust extension (development mode)..."
@@ -91,6 +87,6 @@ clean-rust:
 	@echo "Cleaning Rust build artifacts..."
 	rm -rf target/
 	rm -rf rust/target/
-	rm -f zerobus/_zerobus_core.so
+	rm -f zerobus/_zerobus_core.*
 	rm -f Cargo.lock
 	@echo "✓ Rust artifacts cleaned"

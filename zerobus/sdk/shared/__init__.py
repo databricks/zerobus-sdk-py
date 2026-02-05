@@ -1,28 +1,28 @@
 """
 Shared utilities for Zerobus SDK.
 
-This module re-exports common types from the Rust core for backward compatibility.
+This module provides Python wrappers around Rust types with comprehensive
+documentation and type hints.
 """
 
-# Re-export from Rust core for backward compatibility
+# Re-export Rust types that don't need wrappers
 from zerobus._zerobus_core import (
-    AckCallback,
     HeadersProvider,
     NonRetriableException,
-    OAuthHeadersProvider,
     RecordType,
-    StreamConfigurationOptions,
     TableProperties,
     ZerobusException,
 )
 
+# Import Python wrappers with documentation
+from zerobus.sdk.shared.config import AckCallback, StreamConfigurationOptions
+
 __all__ = [
+    "AckCallback",
+    "HeadersProvider",
+    "NonRetriableException",
     "RecordType",
     "StreamConfigurationOptions",
     "TableProperties",
     "ZerobusException",
-    "NonRetriableException",
-    "AckCallback",
-    "HeadersProvider",
-    "OAuthHeadersProvider",
 ]

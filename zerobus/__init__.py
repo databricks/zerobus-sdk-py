@@ -56,7 +56,6 @@ AckCallback = _core.AckCallback
 ZerobusException = _core.ZerobusException
 NonRetriableException = _core.NonRetriableException
 HeadersProvider = _core.HeadersProvider
-OAuthHeadersProvider = _core.OAuthHeadersProvider
 
 # Re-export sync SDK from submodule
 ZerobusSdk = _core.sync.ZerobusSdk
@@ -75,7 +74,6 @@ __all__ = [
     "AckCallback",
     # Authentication
     "HeadersProvider",
-    "OAuthHeadersProvider",
     # Exceptions
     "ZerobusException",
     "NonRetriableException",

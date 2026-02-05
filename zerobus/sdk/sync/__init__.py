@@ -7,7 +7,6 @@ This module provides high-performance synchronous ingestion backed by a Rust cor
 from zerobus.sdk.sync.zerobus_sdk import (
     HeadersProvider,
     NonRetriableException,
-    OAuthHeadersProvider,
     RecordAcknowledgment,
     RecordType,
     StreamConfigurationOptions,
@@ -25,7 +24,6 @@ __all__ = [
     "StreamConfigurationOptions",
     "RecordType",
     "HeadersProvider",
-    "OAuthHeadersProvider",
     "ZerobusException",
     "NonRetriableException",
 ]

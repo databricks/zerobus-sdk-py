@@ -1,9 +1,7 @@
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
-use async_trait::async_trait;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyList};
 use pyo3_asyncio::tokio::future_into_py;
@@ -11,12 +9,13 @@ use tokio::sync::RwLock;
 
 use databricks_zerobus_ingest_sdk::{
     databricks::zerobus::RecordType as RustRecordType, EncodedRecord,
-    HeadersProvider as RustHeadersProvider, StreamConfigurationOptions as RustStreamOptions,
-    TableProperties as RustTableProperties, ZerobusError as RustError, ZerobusResult as RustResult,
+    StreamConfigurationOptions as RustStreamOptions,
+    TableProperties as RustTableProperties, ZerobusError as RustError,
     ZerobusSdk as RustSdk, ZerobusStream as RustStream,
 };
 
 use crate::common::{map_error, StreamConfigurationOptions, TableProperties};
+use crate::auth::HeadersProviderWrapper;
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -73,40 +72,6 @@ fn extract_record_payloads(payloads: &PyAny) -> PyResult<Vec<EncodedRecord>> {
 
 fn map_rust_error_to_pyerr(err: RustError) -> PyErr {
     map_error(err)
-}
-
-// =============================================================================
-// HEADERS PROVIDER WRAPPER
-// =============================================================================
-
-pub struct HeadersProviderWrapper {
-    py_obj: PyObject,
-}
-
-impl HeadersProviderWrapper {
-    pub fn new(py_obj: PyObject) -> Self {
-        Self { py_obj }
-    }
-}
-
-#[async_trait]
-impl RustHeadersProvider for HeadersProviderWrapper {
-    async fn get_headers<'a>(&'a self) -> RustResult<HashMap<&'static str, String>> {
-        Python::with_gil(|py| {
-            let py_headers = self.py_obj.call_method0(py, "get_headers")?;
-            let list: &PyList = py_headers.extract(py)?;
-            let mut headers = HashMap::new();
-            for item in list.iter() {
-                let tuple: &pyo3::types::PyTuple = item.extract()?;
-                let key: String = tuple.get_item(0)?.extract()?;
-                let value: String = tuple.get_item(1)?.extract()?;
-                let key_static: &'static str = Box::leak(key.into_boxed_str());
-                headers.insert(key_static, value);
-            }
-            Ok(headers)
-        })
-        .map_err(|e: PyErr| RustError::InvalidArgument(format!("Python headers error: {:?}", e)))
-    }
 }
 
 // =============================================================================

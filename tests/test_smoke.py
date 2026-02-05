@@ -38,7 +38,6 @@ class TestImports(unittest.TestCase):
         """Test that recommended import pattern from zerobus.sdk.shared works."""
         from zerobus.sdk.shared import (
             HeadersProvider,
-            OAuthHeadersProvider,
             RecordType,
             StreamConfigurationOptions,
             TableProperties,
@@ -49,15 +48,13 @@ class TestImports(unittest.TestCase):
         self.assertIsNotNone(StreamConfigurationOptions)
         self.assertIsNotNone(TableProperties)
         self.assertIsNotNone(HeadersProvider)
-        self.assertIsNotNone(OAuthHeadersProvider)
 
     def test_import_from_headers_provider_module(self):
         """Test that backward-compatible import from headers_provider module works."""
-        from zerobus.sdk.shared.headers_provider import HeadersProvider, OAuthHeadersProvider
+        from zerobus.sdk.shared.headers_provider import HeadersProvider
 
         # Verify imports work
         self.assertIsNotNone(HeadersProvider)
-        self.assertIsNotNone(OAuthHeadersProvider)
 
     def test_import_configuration(self):
         """Test configuration classes are available."""

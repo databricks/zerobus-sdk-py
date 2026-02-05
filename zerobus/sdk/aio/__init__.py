@@ -8,7 +8,6 @@ with native async/await support.
 from zerobus.sdk.aio.zerobus_sdk import (
     HeadersProvider,
     NonRetriableException,
-    OAuthHeadersProvider,
     RecordType,
     StreamConfigurationOptions,
     TableProperties,
@@ -24,7 +23,6 @@ __all__ = [
     "StreamConfigurationOptions",
     "RecordType",
     "HeadersProvider",
-    "OAuthHeadersProvider",
     "ZerobusException",
     "NonRetriableException",
 ]

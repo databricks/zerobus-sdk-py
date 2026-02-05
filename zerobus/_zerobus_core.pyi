@@ -30,17 +30,20 @@ class TableProperties:
     def __init__(self, table_name: str, descriptor_proto: Optional[bytes] = None) -> None: ...
     def __repr__(self) -> str: ...
 
-class RecordCallback:
+class AckCallback:
     """
     Base class for record acknowledgment callbacks.
 
     Subclass this in Python to create custom callbacks that are invoked
-    when records are acknowledged by the server.
+    when records are acknowledged or encounter errors.
 
     Example:
-        class MyCallback(RecordCallback):
-            def on_ack(self, offset):
+        class MyCallback(AckCallback):
+            def on_ack(self, offset: int):
                 print(f"Record acknowledged at offset {offset}")
+
+            def on_error(self, offset: int, error_message: str):
+                print(f"Record at offset {offset} failed: {error_message}")
     """
 
     def __init__(self) -> None: ...
@@ -53,20 +56,88 @@ class RecordCallback:
         """
         ...
 
+    def on_error(self, offset: int, error_message: str) -> None:
+        """
+        Called when a record encounters an error.
+
+        Args:
+            offset: The offset of the failed record
+            error_message: Description of the error
+        """
+        ...
+
 class StreamConfigurationOptions:
-    """Configuration options for the stream."""
+    """
+    Configuration options for the stream.
+
+    All parameters are optional and will use defaults if not specified.
+    """
 
     max_inflight_records: int
-    recovery: bool
-    recovery_timeout_ms: int
-    recovery_backoff_ms: int
-    recovery_retries: int
-    server_lack_of_ack_timeout_ms: int
-    flush_timeout_ms: int
-    record_type: RecordType
-    ack_callback: Optional[RecordCallback]
+    """Maximum number of records that can be sent to the server before waiting for acknowledgment (default: 50000)"""
 
-    def __init__(self, **kwargs: Any) -> None: ...
+    recovery: bool
+    """Whether to enable automatic recovery of the stream in case of failure (default: True)"""
+
+    recovery_timeout_ms: int
+    """Timeout for stream recovery in milliseconds for one attempt (default: 15000)"""
+
+    recovery_backoff_ms: int
+    """Backoff time in milliseconds between recovery attempts (default: 2000)"""
+
+    recovery_retries: int
+    """Number of retries for stream recovery (default: 3)"""
+
+    server_lack_of_ack_timeout_ms: int
+    """Number of ms in which, if we do not receive an acknowledgement, the server is considered unresponsive (default: 60000)"""
+
+    flush_timeout_ms: int
+    """Timeout for flushing the stream in milliseconds (default: 300000)"""
+
+    record_type: RecordType
+    """Type of records to ingest into the stream (default: RecordType.PROTO)"""
+
+    stream_paused_max_wait_time_ms: Optional[int]
+    """Maximum time in milliseconds to wait during graceful stream close (default: None - wait for full server duration)"""
+
+    callback_max_wait_time_ms: Optional[int]
+    """Maximum time in milliseconds to wait for callbacks to finish after calling close() (default: 5000)"""
+
+    ack_callback: Optional[AckCallback]
+    """Callback to be invoked when records are acknowledged (default: None)"""
+
+    def __init__(
+        self,
+        max_inflight_records: int = 50000,
+        recovery: bool = True,
+        recovery_timeout_ms: int = 15000,
+        recovery_backoff_ms: int = 2000,
+        recovery_retries: int = 3,
+        server_lack_of_ack_timeout_ms: int = 60000,
+        flush_timeout_ms: int = 300000,
+        record_type: RecordType = ...,
+        stream_paused_max_wait_time_ms: Optional[int] = None,
+        callback_max_wait_time_ms: Optional[int] = 5000,
+        ack_callback: Optional[AckCallback] = None,
+    ) -> None:
+        """
+        Create stream configuration options.
+
+        Args:
+            max_inflight_records: Maximum number of unacknowledged records (default: 50000)
+            recovery: Enable automatic stream recovery (default: True)
+            recovery_timeout_ms: Recovery operation timeout in ms (default: 15000)
+            recovery_backoff_ms: Delay between recovery attempts in ms (default: 2000)
+            recovery_retries: Maximum number of recovery attempts (default: 3)
+            server_lack_of_ack_timeout_ms: Server acknowledgment timeout in ms (default: 60000)
+            flush_timeout_ms: Flush operation timeout in ms (default: 300000)
+            record_type: Serialization format (default: RecordType.PROTO)
+            stream_paused_max_wait_time_ms: Max wait time during graceful close in ms (default: None)
+            callback_max_wait_time_ms: Max wait time for callbacks after close in ms (default: 5000)
+            ack_callback: Callback invoked on record acknowledgment (default: None)
+        """
+        ...
+
     def __repr__(self) -> str: ...
 
 # =============================================================================
@@ -88,22 +159,24 @@ class NonRetriableException(ZerobusException):
 # =============================================================================
 
 class HeadersProvider:
-    """Base class for headers strategies (subclassable from Python)."""
+    """
+    Base class for custom authentication headers (subclassable from Python).
+
+    For custom authentication, subclass this and implement get_headers().
+    For standard OAuth 2.0, use the client_id/client_secret parameters
+    in create_stream() - OAuth is handled internally by the Rust SDK.
+    """
 
     def __init__(self) -> None: ...
-    def get_headers(self) -> List[Tuple[str, str]]: ...
+    def get_headers(self) -> List[Tuple[str, str]]:
+        """
+        Return authentication headers as a list of (key, value) tuples.
 
-class OAuthHeadersProvider(HeadersProvider):
-    """OAuth 2.0 Client Credentials flow headers provider."""
-
-    def __init__(
-        self,
-        unity_catalog_url: str,
-        client_id: str,
-        client_secret: str,
-        table_name: str,
-    ) -> None: ...
-    def get_headers(self) -> List[Tuple[str, str]]: ...
+        Must include:
+        - ("authorization", "Bearer <token>")
+        - ("x-databricks-zerobus-table-name", "<table_name>")
+        """
+        ...
 
 # =============================================================================
 # SYNC SDK

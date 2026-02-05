@@ -573,17 +573,20 @@ import asyncio
 import json
 import logging
 from zerobus.sdk.aio import ZerobusSdk
-from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
+from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties, AckCallback
 
 logging.basicConfig(level=logging.INFO)
 
 async def main():
+    # Create a custom callback class
+    class MyCallback(AckCallback):
+        def on_ack(self, offset: int):
+            print(f"Acknowledged offset: {offset}")
+
     options = StreamConfigurationOptions(
         record_type=RecordType.JSON,
         max_inflight_records=50000,
-        ack_callback=lambda response: print(
-            f"Acknowledged offset: {response.durability_ack_up_to_offset}"
-        )
+        ack_callback=MyCallback()
     )
 
     sdk = ZerobusSdk(server_endpoint, workspace_url)
@@ -648,17 +651,20 @@ finally:
 import asyncio
 import logging
 from zerobus.sdk.aio import ZerobusSdk
-from zerobus.sdk.shared import TableProperties, StreamConfigurationOptions
+from zerobus.sdk.shared import TableProperties, StreamConfigurationOptions, AckCallback
 import record_pb2
 
 logging.basicConfig(level=logging.INFO)
 
 async def main():
+    # Create a custom callback class
+    class MyCallback(AckCallback):
+        def on_ack(self, offset: int):
+            print(f"Acknowledged offset: {offset}")
+
     options = StreamConfigurationOptions(
         max_inflight_records=50000,
-        ack_callback=lambda response: print(
-            f"Acknowledged offset: {response.durability_ack_up_to_offset}"
-        )
+        ack_callback=MyCallback()
     )
 
     sdk = ZerobusSdk(server_endpoint, workspace_url)
@@ -709,32 +715,80 @@ For advanced use cases requiring custom authentication headers, see the `Headers
 
 ### Stream Configuration Options
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `record_type` | `RecordType.PROTO` | Serialization format: `RecordType.PROTO` or `RecordType.JSON` |
-| `max_inflight_records` | 50000 | Maximum number of unacknowledged records |
-| `recovery` | True | Enable automatic stream recovery |
-| `recovery_timeout_ms` | 15000 | Timeout for recovery operations (ms) |
-| `recovery_backoff_ms` | 2000 | Delay between recovery attempts (ms) |
-| `recovery_retries` | 3 | Maximum number of recovery attempts |
-| `flush_timeout_ms` | 300000 | Timeout for flush operations (ms) |
-| `server_lack_of_ack_timeout_ms` | 60000 | Server acknowledgment timeout (ms) |
-| `ack_callback` | None | Callback invoked on record acknowledgment |
-
-### Example Configuration
+Configure stream behavior by passing a `StreamConfigurationOptions` object to `create_stream()`:
 
 ```python
-from zerobus.sdk.shared import StreamConfigurationOptions
+from zerobus.sdk.sync import ZerobusSdk
+from zerobus.sdk.shared import StreamConfigurationOptions, RecordType, TableProperties
 
+sdk = ZerobusSdk(server_endpoint, workspace_url)
+table_properties = TableProperties(table_name)
+
+# Optional: Create a custom callback class
+class MyCallback(AckCallback):
+    def on_ack(self, offset: int):
+        print(f"Ack: {offset}")
+
+# Create options with custom configuration
 options = StreamConfigurationOptions(
+    record_type=RecordType.JSON,
     max_inflight_records=10000,
     recovery=True,
     recovery_timeout_ms=20000,
-    ack_callback=lambda response: print(
-        f"Ack: {response.durability_ack_up_to_offset}"
-    )
+    ack_callback=MyCallback()  # Optional - can be None
 )
 
+# Pass options when creating the stream
+stream = sdk.create_stream(
+    client_id,
+    client_secret,
+    table_properties,
+    options  # <-- Configuration options passed here
+)
+```
+
+**All options are optional** - if not specified, defaults will be used.
+
+### Available Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `record_type` | `RecordType` | `RecordType.PROTO` | Serialization format: `RecordType.PROTO` or `RecordType.JSON` |
+| `max_inflight_records` | `int` | `50000` | Maximum number of unacknowledged records |
+| `recovery` | `bool` | `True` | Enable automatic stream recovery |
+| `recovery_timeout_ms` | `int` | `15000` | Timeout for recovery operations (ms) |
+| `recovery_backoff_ms` | `int` | `2000` | Delay between recovery attempts (ms) |
+| `recovery_retries` | `int` | `3` | Maximum number of recovery attempts |
+| `flush_timeout_ms` | `int` | `300000` | Timeout for flush operations (ms) |
+| `server_lack_of_ack_timeout_ms` | `int` | `60000` | Server acknowledgment timeout (ms) |
+| `stream_paused_max_wait_time_ms` | `Optional[int]` | `None` | Max time (ms) to wait during graceful stream close. `None` = wait for full server duration, `0` = immediate, `x` = wait up to min(x, server_duration) |
+| `callback_max_wait_time_ms` | `Optional[int]` | `5000` | Max time (ms) to wait for callbacks to finish after `close()`. `None` = wait forever, `x` = wait up to x ms |
+| `ack_callback` | `AckCallback` | `None` | Callback invoked on record acknowledgment (must be a class extending `AckCallback`) |
+
+### Acknowledgment Callbacks
+
+The `ack_callback` parameter requires a custom class extending `AckCallback`:
+
+```python
+from zerobus.sdk.shared import AckCallback, StreamConfigurationOptions
+
+class MyCallback(AckCallback):
+    def on_ack(self, offset: int):
+        # Called when a record is successfully acknowledged
+        print(f"Record at offset {offset} was acknowledged")
+        # You can track metrics, update UI, etc.
+
+    def on_error(self, offset: int, error_message: str):
+        # Called when a record encounters an error
+        print(f"Record at offset {offset} failed: {error_message}")
+        # Handle errors, log, retry, etc.
+
+# Create options with the callback
+options = StreamConfigurationOptions(
+    ack_callback=MyCallback()
+)
+
+# Use the options when creating a stream
 stream = sdk.create_stream(
     client_id,
     client_secret,
@@ -1033,11 +1087,11 @@ table_properties = TableProperties("catalog.schema.table", record_pb2.MyMessage.
 
 ### HeadersProvider
 
-Abstract base class for providing authentication headers to gRPC streams.
+Abstract base class for providing custom authentication headers to gRPC streams.
 
-**Default:** The SDK uses `OAuthHeadersProvider` internally, which handles OAuth 2.0 Client Credentials authentication automatically when you call `create_stream()`.
+**Default:** The SDK handles OAuth 2.0 Client Credentials authentication internally when you provide `client_id` and `client_secret` to `create_stream()`. You don't need to implement any headers provider for standard OAuth authentication.
 
-**Custom Implementation:** For advanced use cases, you can implement a custom `HeadersProvider` by extending the base class and implementing the `get_headers()` method. Custom providers must include both the `authorization` and `x-databricks-zerobus-table-name` headers. See example files for implementation details.
+**Custom Implementation:** For advanced use cases (e.g., custom token providers, non-OAuth authentication), you can implement a custom `HeadersProvider` by extending the base class and implementing the `get_headers()` method. Custom providers must include both the `authorization` and `x-databricks-zerobus-table-name` headers. See example files for implementation details.
 
 ---
 
@@ -1056,7 +1110,9 @@ StreamConfigurationOptions(
     recovery_retries: int = 3,
     flush_timeout_ms: int = 300000,
     server_lack_of_ack_timeout_ms: int = 60000,
-    ack_callback: Callable = None
+    stream_paused_max_wait_time_ms: Optional[int] = None,
+    callback_max_wait_time_ms: Optional[int] = 5000,
+    ack_callback: AckCallback = None
 )
 ```
 
@@ -1069,7 +1125,77 @@ StreamConfigurationOptions(
 - `recovery_retries` (int) - Maximum number of recovery attempts (default: 3)
 - `flush_timeout_ms` (int) - Flush operation timeout in milliseconds (default: 300000)
 - `server_lack_of_ack_timeout_ms` (int) - Server acknowledgment timeout in milliseconds (default: 60000)
-- `ack_callback` (Callable) - Callback to be invoked when records are acknowledged by the server (default: None)
+- `stream_paused_max_wait_time_ms` (Optional[int]) - Maximum time in milliseconds to wait during graceful stream close. When the server signals stream closure, the SDK can pause and wait for in-flight records to be acknowledged. `None` = wait for full server-specified duration (most graceful), `0` = immediate recovery, `x` = wait up to min(x, server_duration) milliseconds (default: None)
+- `callback_max_wait_time_ms` (Optional[int]) - Maximum time in milliseconds to wait for callbacks to finish after calling `close()` on the stream. `None` = wait forever, `x` = wait up to x milliseconds (default: 5000)
+- `ack_callback` (AckCallback) - Callback to be invoked when records are acknowledged or encounter errors. Must be a custom class extending `AckCallback` that implements `on_ack()` and optionally `on_error()` methods. (default: None)
+
+**Example:**
+```python
+from zerobus.sdk.shared import StreamConfigurationOptions, RecordType, AckCallback
+
+# Create a custom callback class
+class MyCallback(AckCallback):
+    def on_ack(self, offset: int):
+        print(f"Ack: {offset}")
+
+    def on_error(self, offset: int, error_message: str):
+        print(f"Error at {offset}: {error_message}")
+
+# Use the callback in options
+options = StreamConfigurationOptions(
+    record_type=RecordType.JSON,
+    max_inflight_records=10000,
+    ack_callback=MyCallback()
+)
+
+# Pass to create_stream()
+stream = sdk.create_stream(client_id, client_secret, table_properties, options)
+```
+
+---
+
+### AckCallback
+
+Abstract base class for custom acknowledgment callbacks.
+
+**Usage:**
+```python
+from zerobus.sdk.shared import AckCallback, StreamConfigurationOptions
+
+class MyCallback(AckCallback):
+    def on_ack(self, offset: int):
+        # Called when a record is acknowledged by the server
+        print(f"Record at offset {offset} acknowledged")
+        # Add custom logic: metrics, logging, UI updates, etc.
+
+    def on_error(self, offset: int, error_message: str):
+        # Called when a record encounters an error
+        print(f"Record at offset {offset} failed: {error_message}")
+        # Add custom error handling
+
+# Use in StreamConfigurationOptions
+options = StreamConfigurationOptions(ack_callback=MyCallback())
+stream = sdk.create_stream(client_id, client_secret, table_properties, options)
+```
+
+**Methods:**
+
+```python
+def on_ack(self, offset: int) -> None
+```
+Called when a record is successfully acknowledged by the server.
+
+**Parameters:**
+- `offset` (int) - The offset of the acknowledged record
+
+```python
+def on_error(self, offset: int, error_message: str) -> None
+```
+Called when a record encounters an error.
+
+**Parameters:**
+- `offset` (int) - The offset of the failed record
+- `error_message` (str) - Description of the error
 
 ---
 
@@ -1093,20 +1219,6 @@ Adds a callback to be invoked when the record is acknowledged.
 def is_done() -> bool
 ```
 Returns True if the record has been acknowledged.
-
----
-
-### StreamState (Enum)
-
-Represents the lifecycle state of a stream.
-
-**Values:**
-- `UNINITIALIZED` - Stream created but not yet initialized
-- `OPENED` - Stream is open and accepting records
-- `FLUSHING` - Stream is flushing pending records
-- `RECOVERING` - Stream is recovering from a failure
-- `CLOSED` - Stream has been gracefully closed
-- `FAILED` - Stream has failed and cannot be recovered
 
 ---
 

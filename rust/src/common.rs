@@ -131,14 +131,6 @@ impl TableProperties {
 }
 
 /// Base class for record acknowledgment callbacks
-///
-/// Subclass this in Python to create custom callbacks that are invoked
-/// when records are acknowledged by the server.
-///
-/// Example:
-///     class MyCallback(AckCallback):
-///         def on_ack(self, offset):
-///             print(f"Record acknowledged at offset {offset}")
 #[pyclass(subclass)]
 #[derive(Clone)]
 pub struct AckCallback {
@@ -154,13 +146,8 @@ impl AckCallback {
         }
     }
 
-    /// Called when a record is acknowledged by the server
-    ///
-    /// Args:
-    ///     offset: The offset of the acknowledged record
     fn on_ack(&self, py: Python, offset: i64) -> PyResult<()> {
-        // Default implementation does nothing
-        // Subclasses should override this method
+        // Default implementation does nothing - subclasses override this
         let _ = (py, offset);
         Ok(())
     }
@@ -177,39 +164,36 @@ impl AckCallback {
 #[pyclass]
 #[derive(Clone)]
 pub struct StreamConfigurationOptions {
-    /// Maximum number of records that can be sent to the server before waiting for acknowledgment
     #[pyo3(get, set)]
     pub max_inflight_records: i32,
 
-    /// Whether to enable automatic recovery of the stream in case of failure
     #[pyo3(get, set)]
     pub recovery: bool,
 
-    /// Timeout for stream recovery in milliseconds (for one attempt of recovery)
     #[pyo3(get, set)]
     pub recovery_timeout_ms: i32,
 
-    /// Backoff time in milliseconds between recovery attempts
     #[pyo3(get, set)]
     pub recovery_backoff_ms: i32,
 
-    /// Number of retries for stream recovery
     #[pyo3(get, set)]
     pub recovery_retries: i32,
 
-    /// The number of ms in which, if we do not receive an acknowledgement, the server is considered unresponsive
     #[pyo3(get, set)]
     pub server_lack_of_ack_timeout_ms: i32,
 
-    /// Timeout for flushing the stream in milliseconds
     #[pyo3(get, set)]
     pub flush_timeout_ms: i32,
 
-    /// Type of records to ingest into the stream
     #[pyo3(get, set)]
     pub record_type: RecordType,
 
-    /// Callback to be invoked when records are acknowledged
+    #[pyo3(get, set)]
+    pub stream_paused_max_wait_time_ms: Option<i32>,
+
+    #[pyo3(get, set)]
+    pub callback_max_wait_time_ms: Option<i32>,
+
     #[pyo3(get, set)]
     pub ack_callback: Option<Py<AckCallback>>,
 }
@@ -225,6 +209,8 @@ impl Default for StreamConfigurationOptions {
             server_lack_of_ack_timeout_ms: 60_000,
             flush_timeout_ms: 300_000,
             record_type: RecordType { value: 1 }, // PROTO
+            stream_paused_max_wait_time_ms: None,
+            callback_max_wait_time_ms: Some(5_000),
             ack_callback: None,
         }
     }
@@ -249,6 +235,20 @@ impl StreamConfigurationOptions {
                     "server_lack_of_ack_timeout_ms" => options.server_lack_of_ack_timeout_ms = value.extract()?,
                     "flush_timeout_ms" => options.flush_timeout_ms = value.extract()?,
                     "record_type" => options.record_type = value.extract()?,
+                    "stream_paused_max_wait_time_ms" => {
+                        options.stream_paused_max_wait_time_ms = if value.is_none() {
+                            None
+                        } else {
+                            Some(value.extract()?)
+                        };
+                    }
+                    "callback_max_wait_time_ms" => {
+                        options.callback_max_wait_time_ms = if value.is_none() {
+                            None
+                        } else {
+                            Some(value.extract()?)
+                        };
+                    }
                     "ack_callback" => {
                         options.ack_callback = if value.is_none() {
                             None

@@ -127,21 +127,23 @@ class ZerobusStream:
 
     async def get_unacked_records(self):
         """
-        Get list of unacknowledged records.
+        Get iterator of unacknowledged records.
 
         Returns:
-            List[bytes]: List of record payloads that have been ingested but not yet acknowledged.
+            Iterator[bytes]: Iterator yielding record payloads that have been ingested but not yet acknowledged.
         """
-        return await self._inner.get_unacked_records()
+        records = await self._inner.get_unacked_records()
+        return iter(records)
 
     async def get_unacked_batches(self):
         """
-        Get list of unacknowledged batches.
+        Get iterator of unacknowledged batches.
 
         Returns:
-            List[List[bytes]]: List of batches, where each batch is a list of record payloads.
+            Iterator[List[bytes]]: Iterator yielding batches, where each batch is a list of record payloads.
         """
-        return await self._inner.get_unacked_batches()
+        batches = await self._inner.get_unacked_batches()
+        return iter(batches)
 
     @property
     def stream_id(self):
@@ -199,7 +201,6 @@ class ZerobusSdk:
 
 # Re-export common types for convenience
 HeadersProvider = _core.HeadersProvider
-OAuthHeadersProvider = _core.OAuthHeadersProvider
 RecordType = _core.RecordType
 StreamConfigurationOptions = _core.StreamConfigurationOptions
 TableProperties = _core.TableProperties
@@ -215,7 +216,6 @@ __all__ = [
     "RecordType",
     "AckCallback",
     "HeadersProvider",
-    "OAuthHeadersProvider",
     "ZerobusException",
     "NonRetriableException",
 ]

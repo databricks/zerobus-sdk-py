@@ -42,7 +42,6 @@ fn _zerobus_core(py: Python, m: &PyModule) -> PyResult<()> {
 
     // Add authentication classes
     m.add_class::<auth::HeadersProvider>()?;
-    m.add_class::<auth::OAuthHeadersProvider>()?;
 
     // Add sync submodule
     let sync_module = PyModule::new(py, "sync")?;
