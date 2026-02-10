@@ -61,22 +61,13 @@ The SDK's core is implemented in Rust. There are two ways to build it:
 ```bash
 make develop-rust
 ```
-This compiles the Rust code in debug mode and installs it directly into your virtual environment. Changes to Rust code require re-running this command.
+This compiles the Rust code in debug mode and installs it directly into your virtual environment. **After modifying Rust code, re-run this command to rebuild.**
 
 **Option 2: Release Mode (For benchmarking or distribution)**
 ```bash
 make build-rust
 ```
 This creates an optimized wheel in `target/wheels/`. Use this for performance testing or creating release builds.
-
-**Quick rebuild after Rust changes:**
-```bash
-# If you modify Rust code, rebuild with:
-maturin develop --manifest-path rust/Cargo.toml
-
-# Or use the make target:
-make develop-rust
-```
 
 ## Coding Style
 

@@ -43,10 +43,12 @@ Example (Async):
     >>> asyncio.run(main())
 """
 
-__version__ = "0.3.0"
-
 # Import from Rust core
 import zerobus._zerobus_core as _core
+
+from zerobus.sdk.sync import ZerobusSdk, ZerobusStream
+
+__version__ = "0.3.0"
 
 # Re-export common types
 TableProperties = _core.TableProperties
@@ -56,10 +58,6 @@ AckCallback = _core.AckCallback
 ZerobusException = _core.ZerobusException
 NonRetriableException = _core.NonRetriableException
 HeadersProvider = _core.HeadersProvider
-
-# Re-export sync SDK from submodule
-ZerobusSdk = _core.sync.ZerobusSdk
-ZerobusStream = _core.sync.ZerobusStream
 RecordAcknowledgment = _core.sync.RecordAcknowledgment
 
 __all__ = [

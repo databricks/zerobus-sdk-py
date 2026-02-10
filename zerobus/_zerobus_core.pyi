@@ -1,6 +1,6 @@
 """Type stubs for _zerobus_core Rust module."""
 
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, Union
 
 from typing_extensions import Self
 
@@ -12,11 +12,9 @@ class RecordType:
     """Type of records to ingest into the stream."""
 
     value: int
+    PROTO: RecordType
+    JSON: RecordType
 
-    @staticmethod
-    def PROTO() -> int: ...
-    @staticmethod
-    def JSON() -> int: ...
     def __int__(self) -> int: ...
     def __eq__(self, other: Self) -> bool: ...
     def __repr__(self) -> str: ...
@@ -27,7 +25,22 @@ class TableProperties:
     table_name: str
     descriptor_proto: Optional[bytes]
 
-    def __init__(self, table_name: str, descriptor_proto: Optional[bytes] = None) -> None: ...
+    def __init__(
+        self,
+        table_name: str,
+        descriptor_proto: Optional[Union[bytes, Any]] = None
+    ) -> None:
+        """
+        Create table properties.
+
+        Args:
+            table_name: Fully qualified table name (catalog.schema.table)
+            descriptor_proto: Protocol buffer descriptor - can be:
+                - bytes: Serialized FileDescriptorProto
+                - Descriptor: Protobuf Descriptor object (e.g., MyMessage.DESCRIPTOR)
+                - None: For JSON mode (no descriptor needed)
+        """
+        ...
     def __repr__(self) -> str: ...
 
 class AckCallback:
@@ -210,7 +223,7 @@ class sync:
     class ZerobusStream:
         """Manages a single, stateful stream for ingesting records."""
 
-        def ingest_record(self, payload: bytes | str) -> RecordAcknowledgment:
+        def ingest_record(self, payload: bytes | str) -> "RecordAcknowledgment":
             """
             Ingest a single record and return RecordAcknowledgment (legacy API).
 
@@ -312,7 +325,7 @@ class sync:
             client_id: str,
             client_secret: str,
             options: Optional[StreamConfigurationOptions] = None,
-        ) -> ZerobusStream:
+        ) -> "ZerobusStream":
             """
             Create a new stream with OAuth authentication.
 
@@ -332,7 +345,7 @@ class sync:
             table_properties: TableProperties,
             headers_provider: HeadersProvider,
             options: Optional[StreamConfigurationOptions] = None,
-        ) -> ZerobusStream:
+        ) -> "ZerobusStream":
             """
             Create a new stream with custom headers provider.
 
@@ -346,7 +359,7 @@ class sync:
             """
             ...
 
-        def recreate_stream(self, old_stream: ZerobusStream) -> ZerobusStream:
+        def recreate_stream(self, old_stream: "ZerobusStream") -> "ZerobusStream":
             """
             Recreate a closed stream with the same configuration.
 
@@ -453,7 +466,7 @@ class aio:
             client_id: str,
             client_secret: str,
             options: Optional[StreamConfigurationOptions] = None,
-        ) -> ZerobusStream:
+        ) -> "ZerobusStream":
             """
             Create a new stream with OAuth authentication.
 
@@ -473,7 +486,7 @@ class aio:
             table_properties: TableProperties,
             headers_provider: HeadersProvider,
             options: Optional[StreamConfigurationOptions] = None,
-        ) -> ZerobusStream:
+        ) -> "ZerobusStream":
             """
             Create a new stream with custom headers provider.
 
@@ -487,7 +500,7 @@ class aio:
             """
             ...
 
-        async def recreate_stream(self, old_stream: ZerobusStream) -> ZerobusStream:
+        async def recreate_stream(self, old_stream: "ZerobusStream") -> "ZerobusStream":
             """
             Recreate a closed stream with the same configuration.
 

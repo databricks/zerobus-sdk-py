@@ -8,7 +8,7 @@ else
     VENV = .venv/bin/python
 endif
 
-.PHONY: dev install build clean install-wheel help fmt lint test build-rust develop-rust clean-rust
+.PHONY: dev install build clean clean-all install-wheel help fmt lint test build-rust develop-rust clean-rust
 
 help:
 	@echo "Available targets:"
@@ -18,7 +18,8 @@ help:
 	@echo "  make install-wheel  - Install the built wheel"
 	@echo "  make install        - Install package directly (editable mode)"
 	@echo "  make dev            - Set up development environment"
-	@echo "  make clean          - Remove build artifacts"
+	@echo "  make clean          - Remove build artifacts (keeps .venv)"
+	@echo "  make clean-all      - Remove build artifacts and .venv"
 	@echo "  make fmt            - Format code"
 	@echo "  make lint           - Run linting"
 	@echo "  make test           - Run unit tests"
@@ -36,12 +37,12 @@ dev:
 	$(VENV) -m pip install -e '.[dev]'
 
 install:
-	pip install -e .
+	$(VENV) -m pip install -e .
 
 build:
 	@echo "Building release wheel with $(PYTHON)..."
-	$(PYTHON) -m pip install --upgrade pip maturin
-	maturin build --release --strip --out dist
+	$(VENV) -m pip install --upgrade pip maturin
+	$(VENV) -m maturin build --release --strip --out dist
 	@echo ""
 	@echo "✓ Release wheel built successfully in dist/"
 	@ls -lh dist/*.whl 2>/dev/null || true
@@ -52,11 +53,14 @@ install-wheel:
 		exit 1; \
 	fi
 	@echo "Installing wheel: $$(ls -t dist/*.whl | head -1)"
-	pip install --force-reinstall $$(ls -t dist/*.whl | head -1)
+	$(VENV) -m pip install --force-reinstall $$(ls -t dist/*.whl | head -1)
 	@echo "✓ Wheel installed successfully"
 
 clean:
-	rm -rf dist *.egg-info .pytest_cache build htmlcov .venv
+	rm -rf dist *.egg-info .pytest_cache build htmlcov
+
+clean-all: clean clean-rust
+	rm -rf .venv
 
 fmt:
 	$(VENV) -m black zerobus examples tests
@@ -74,13 +78,13 @@ test:
 build-rust:
 	@echo "Building Rust extension (release mode)..."
 	@which maturin >/dev/null 2>&1 || (echo "Error: maturin not found. Install with: pip install maturin" && exit 1)
-	maturin build --release --manifest-path rust/Cargo.toml
+	$(VENV) -m maturin build --release
 	@echo "✓ Rust extension built successfully"
 
 develop-rust:
 	@echo "Building and installing Rust extension (development mode)..."
 	@which maturin >/dev/null 2>&1 || (echo "Error: maturin not found. Install with: pip install maturin" && exit 1)
-	maturin develop --manifest-path rust/Cargo.toml
+	$(VENV) -m maturin develop
 	@echo "✓ Rust extension installed in development mode"
 
 clean-rust:
