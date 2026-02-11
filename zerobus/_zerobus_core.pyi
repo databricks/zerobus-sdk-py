@@ -25,11 +25,7 @@ class TableProperties:
     table_name: str
     descriptor_proto: Optional[bytes]
 
-    def __init__(
-        self,
-        table_name: str,
-        descriptor_proto: Optional[Union[bytes, Any]] = None
-    ) -> None:
+    def __init__(self, table_name: str, descriptor_proto: Optional[Union[bytes, Any]] = None) -> None:
         """
         Create table properties.
 
@@ -41,6 +37,7 @@ class TableProperties:
                 - None: For JSON mode (no descriptor needed)
         """
         ...
+
     def __repr__(self) -> str: ...
 
 class AckCallback:

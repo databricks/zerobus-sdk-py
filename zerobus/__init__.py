@@ -45,7 +45,6 @@ Example (Async):
 
 # Import from Rust core
 import zerobus._zerobus_core as _core
-
 from zerobus.sdk.sync import ZerobusSdk, ZerobusStream
 
 __version__ = "0.3.0"
