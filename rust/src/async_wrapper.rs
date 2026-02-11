@@ -8,14 +8,50 @@ use pyo3_asyncio::tokio::future_into_py;
 use tokio::sync::RwLock;
 
 use databricks_zerobus_ingest_sdk::{
-    databricks::zerobus::RecordType as RustRecordType, EncodedRecord,
-    StreamConfigurationOptions as RustStreamOptions,
-    TableProperties as RustTableProperties, ZerobusError as RustError,
-    ZerobusSdk as RustSdk, ZerobusStream as RustStream,
+    databricks::zerobus::RecordType as RustRecordType, AckCallback as RustAckCallback,
+    EncodedRecord, OffsetId, StreamConfigurationOptions as RustStreamOptions,
+    TableProperties as RustTableProperties, ZerobusError as RustError, ZerobusSdk as RustSdk,
+    ZerobusStream as RustStream,
 };
 
-use crate::common::{map_error, StreamConfigurationOptions, TableProperties};
 use crate::auth::HeadersProviderWrapper;
+use crate::common::{map_error, AckCallback, StreamConfigurationOptions, TableProperties};
+
+// =============================================================================
+// ACK CALLBACK WRAPPER
+// =============================================================================
+
+/// Wraps Python AckCallback to implement Rust AckCallback trait
+struct AckCallbackWrapper {
+    py_callback: Py<AckCallback>,
+}
+
+impl AckCallbackWrapper {
+    pub fn new(py_callback: Py<AckCallback>) -> Self {
+        Self { py_callback }
+    }
+}
+
+impl RustAckCallback for AckCallbackWrapper {
+    fn on_ack(&self, offset_id: OffsetId) {
+        Python::with_gil(|py| {
+            if let Err(e) = self.py_callback.call_method1(py, "on_ack", (offset_id,)) {
+                eprintln!("Error invoking ack callback: {:?}", e);
+            }
+        });
+    }
+
+    fn on_error(&self, offset_id: OffsetId, error: &str) {
+        Python::with_gil(|py| {
+            if let Err(e) = self
+                .py_callback
+                .call_method1(py, "on_error", (offset_id, error))
+            {
+                eprintln!("Error invoking error callback: {:?}", e);
+            }
+        });
+    }
+}
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -139,7 +175,10 @@ impl ZerobusStream {
     ///
     /// Returns:
     ///     RecordIngestionFuture that can be awaited for acknowledgment
-    #[deprecated(since = "0.3.0", note = "Use ingest_record_offset() instead for better performance")]
+    #[deprecated(
+        since = "0.3.0",
+        note = "Use ingest_record_offset() instead for better performance"
+    )]
     fn ingest_record<'py>(&self, py: Python<'py>, payload: &PyAny) -> PyResult<&'py PyAny> {
         let record_payload = extract_record_payload(payload)?;
         let stream_clone = self.inner.clone();
@@ -153,9 +192,9 @@ impl ZerobusStream {
             ack_future_result
                 .map(|ack_future| {
                     let converted_future = async move {
-                        ack_future.await.map_err(|e| {
-                            Python::with_gil(|_py| map_rust_error_to_pyerr(e))
-                        })
+                        ack_future
+                            .await
+                            .map_err(|e| Python::with_gil(|_py| map_rust_error_to_pyerr(e)))
                     };
                     PyAckFuture::new(converted_future)
                 })
@@ -285,7 +324,9 @@ impl ZerobusStream {
                     .into_iter()
                     .map(|record| match record {
                         EncodedRecord::Proto(bytes) => pyo3::types::PyBytes::new(py, &bytes).into(),
-                        EncodedRecord::Json(json_str) => pyo3::types::PyBytes::new(py, json_str.as_bytes()).into(),
+                        EncodedRecord::Json(json_str) => {
+                            pyo3::types::PyBytes::new(py, json_str.as_bytes()).into()
+                        }
                     })
                     .collect();
                 Ok(py_records)
@@ -314,8 +355,12 @@ impl ZerobusStream {
                         batch
                             .into_iter()
                             .map(|record| match record {
-                                EncodedRecord::Proto(bytes) => pyo3::types::PyBytes::new(py, &bytes).into(),
-                                EncodedRecord::Json(json_str) => pyo3::types::PyBytes::new(py, json_str.as_bytes()).into(),
+                                EncodedRecord::Proto(bytes) => {
+                                    pyo3::types::PyBytes::new(py, &bytes).into()
+                                }
+                                EncodedRecord::Json(json_str) => {
+                                    pyo3::types::PyBytes::new(py, json_str.as_bytes()).into()
+                                }
                             })
                             .collect()
                     })
@@ -453,23 +498,28 @@ fn convert_stream_options(
     options: Option<&StreamConfigurationOptions>,
 ) -> Option<RustStreamOptions> {
     options.map(|opts| {
-        let mut rust_opts = RustStreamOptions::default();
+        let ack_callback = opts
+            .ack_callback
+            .clone()
+            .map(|cb| Arc::new(AckCallbackWrapper::new(cb)) as Arc<dyn RustAckCallback>);
 
-        rust_opts.max_inflight_requests = opts.max_inflight_records as usize;
-        rust_opts.recovery = opts.recovery;
-        rust_opts.recovery_timeout_ms = opts.recovery_timeout_ms as u64;
-        rust_opts.recovery_backoff_ms = opts.recovery_backoff_ms as u64;
-        rust_opts.recovery_retries = opts.recovery_retries as u32;
-        rust_opts.server_lack_of_ack_timeout_ms = opts.server_lack_of_ack_timeout_ms as u64;
-        rust_opts.flush_timeout_ms = opts.flush_timeout_ms as u64;
-
-        // Convert RecordType
-        rust_opts.record_type = match opts.record_type.value {
-            1 => RustRecordType::Proto,
-            2 => RustRecordType::Json,
-            _ => RustRecordType::Proto,
-        };
-
-        rust_opts
+        RustStreamOptions {
+            max_inflight_requests: opts.max_inflight_records as usize,
+            recovery: opts.recovery,
+            recovery_timeout_ms: opts.recovery_timeout_ms as u64,
+            recovery_backoff_ms: opts.recovery_backoff_ms as u64,
+            recovery_retries: opts.recovery_retries as u32,
+            server_lack_of_ack_timeout_ms: opts.server_lack_of_ack_timeout_ms as u64,
+            flush_timeout_ms: opts.flush_timeout_ms as u64,
+            record_type: match opts.record_type.value {
+                1 => RustRecordType::Proto,
+                2 => RustRecordType::Json,
+                _ => RustRecordType::Proto,
+            },
+            stream_paused_max_wait_time_ms: opts.stream_paused_max_wait_time_ms.map(|v| v as u64),
+            callback_max_wait_time_ms: opts.callback_max_wait_time_ms.map(|v| v as u64),
+            ack_callback,
+            ..Default::default()
+        }
     })
 }

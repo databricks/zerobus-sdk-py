@@ -9,10 +9,9 @@ use tokio::sync::RwLock;
 
 use databricks_zerobus_ingest_sdk::{
     databricks::zerobus::RecordType as RustRecordType, AckCallback as RustAckCallback,
-    EncodedRecord, OffsetId,
-    StreamConfigurationOptions as RustStreamOptions, TableProperties as RustTableProperties,
-    ZerobusError as RustError, ZerobusResult as RustResult, ZerobusSdk as RustSdk,
-    ZerobusStream as RustStream,
+    EncodedRecord, OffsetId, StreamConfigurationOptions as RustStreamOptions,
+    TableProperties as RustTableProperties, ZerobusError as RustError, ZerobusResult as RustResult,
+    ZerobusSdk as RustSdk, ZerobusStream as RustStream,
 };
 
 use crate::auth::HeadersProviderWrapper;
@@ -466,6 +465,10 @@ impl ZerobusSdk {
                     2 => RustRecordType::Json,
                     _ => RustRecordType::Unspecified,
                 },
+                stream_paused_max_wait_time_ms: opts
+                    .stream_paused_max_wait_time_ms
+                    .map(|v| v as u64),
+                callback_max_wait_time_ms: opts.callback_max_wait_time_ms.map(|v| v as u64),
                 ack_callback,
                 ..Default::default()
             }
@@ -529,6 +532,10 @@ impl ZerobusSdk {
                     2 => RustRecordType::Json,
                     _ => RustRecordType::Unspecified,
                 },
+                stream_paused_max_wait_time_ms: opts
+                    .stream_paused_max_wait_time_ms
+                    .map(|v| v as u64),
+                callback_max_wait_time_ms: opts.callback_max_wait_time_ms.map(|v| v as u64),
                 ack_callback,
                 ..Default::default()
             }

@@ -1,6 +1,7 @@
 use prost::Message;
-use pyo3::prelude::*;
 use pyo3::exceptions::{PyException, PyValueError};
+use pyo3::prelude::*;
+use pyo3::types::{PyDict, PyTuple};
 
 /// Type of records to ingest into the stream
 #[pyclass]
@@ -91,13 +92,15 @@ impl TableProperties {
                     ));
                 };
 
-                let file_descriptor_proto =
-                    prost_types::FileDescriptorProto::decode(&descriptor_bytes[..]).map_err(|e| {
-                        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                            "Invalid FileDescriptorProto bytes: {}",
-                            e
-                        ))
-                    })?;
+                let file_descriptor_proto = prost_types::FileDescriptorProto::decode(
+                    &descriptor_bytes[..],
+                )
+                .map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Invalid FileDescriptorProto bytes: {}",
+                        e
+                    ))
+                })?;
 
                 let descriptor = file_descriptor_proto
                     .message_type
@@ -125,7 +128,11 @@ impl TableProperties {
         format!(
             "TableProperties(table_name='{}', descriptor_proto={})",
             self.table_name,
-            if self.descriptor_proto.is_some() { "Some(...)" } else { "None" }
+            if self.descriptor_proto.is_some() {
+                "Some(...)"
+            } else {
+                "None"
+            }
         )
     }
 }
@@ -140,7 +147,9 @@ pub struct AckCallback {
 #[pymethods]
 impl AckCallback {
     #[new]
-    fn new() -> Self {
+    #[pyo3(signature = (*_args, **_kwargs))]
+    fn new(_args: &PyTuple, _kwargs: Option<&PyDict>) -> Self {
+        // Accept and ignore any arguments to allow subclasses to use __init__
         Self {
             _phantom: std::marker::PhantomData,
         }
@@ -232,7 +241,9 @@ impl StreamConfigurationOptions {
                     "recovery_timeout_ms" => options.recovery_timeout_ms = value.extract()?,
                     "recovery_backoff_ms" => options.recovery_backoff_ms = value.extract()?,
                     "recovery_retries" => options.recovery_retries = value.extract()?,
-                    "server_lack_of_ack_timeout_ms" => options.server_lack_of_ack_timeout_ms = value.extract()?,
+                    "server_lack_of_ack_timeout_ms" => {
+                        options.server_lack_of_ack_timeout_ms = value.extract()?
+                    }
                     "flush_timeout_ms" => options.flush_timeout_ms = value.extract()?,
                     "record_type" => options.record_type = value.extract()?,
                     "stream_paused_max_wait_time_ms" => {
@@ -257,7 +268,10 @@ impl StreamConfigurationOptions {
                         };
                     }
                     _ => {
-                        return Err(PyValueError::new_err(format!("Unknown configuration option: {}", key_str)));
+                        return Err(PyValueError::new_err(format!(
+                            "Unknown configuration option: {}",
+                            key_str
+                        )));
                     }
                 }
             }
@@ -285,8 +299,18 @@ impl StreamConfigurationOptions {
 }
 
 // Custom exception types
-pyo3::create_exception!(_zerobus_core, ZerobusException, PyException, "Base class for all exceptions in the Zerobus SDK");
-pyo3::create_exception!(_zerobus_core, NonRetriableException, ZerobusException, "Indicates a non-retriable error has occurred");
+pyo3::create_exception!(
+    _zerobus_core,
+    ZerobusException,
+    PyException,
+    "Base class for all exceptions in the Zerobus SDK"
+);
+pyo3::create_exception!(
+    _zerobus_core,
+    NonRetriableException,
+    ZerobusException,
+    "Indicates a non-retriable error has occurred"
+);
 
 /// Map Rust SDK errors to Python exceptions
 pub fn map_error(err: impl std::fmt::Display) -> PyErr {
