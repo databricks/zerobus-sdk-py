@@ -2,20 +2,21 @@
 Python SDK for the Ingest API.
 
 This is the synchronous version of the SDK. For the asynchronous version,
-please use `from zerobus_sdk.aio import ...`.
+please use `from zerobus.sdk.aio import ...`.
 """
 
-from . import sync
-from .shared import (
+# Import from Rust core
+from zerobus._zerobus_core import (
     NonRetriableException,
     RecordType,
     StreamConfigurationOptions,
-    StreamState,
     TableProperties,
     ZerobusException,
 )
-from .shared.tls_config import SecureTlsConfig, TlsConfig
 
+from . import sync
+
+# Re-export sync classes
 ZerobusSdk = sync.ZerobusSdk
 ZerobusStream = sync.ZerobusStream
 RecordAcknowledgment = sync.RecordAcknowledgment
@@ -29,7 +30,4 @@ __all__ = [
     "RecordType",
     "ZerobusException",
     "NonRetriableException",
-    "StreamState",
-    "TlsConfig",
-    "SecureTlsConfig",
 ]

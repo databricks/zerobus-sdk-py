@@ -17,14 +17,11 @@ import logging
 import os
 import time
 
-import grpc
-
 # Import the generated protobuf module
 import record_pb2
 
 from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
 from zerobus.sdk.shared.headers_provider import HeadersProvider
-from zerobus.sdk.shared.tls_config import TlsConfig
 from zerobus.sdk.sync import ZerobusSdk
 
 # Configure logging
@@ -59,7 +56,11 @@ def create_sample_record(index):
 
     You can customize this to create records with different data patterns.
     """
-    return record_pb2.AirQuality(device_name=f"sensor-{index % 10}", temp=20 + (index % 15), humidity=50 + (index % 40))
+    return record_pb2.AirQuality(
+        device_name=f"sensor-{index % 10}",
+        temp=20 + (index % 15),
+        humidity=50 + (index % 40),
+    )
 
 
 class CustomHeadersProvider(HeadersProvider):
@@ -85,44 +86,6 @@ class CustomHeadersProvider(HeadersProvider):
             ("authorization", f"Bearer {self.custom_token}"),
             ("x-custom-header", "custom-value"),
         ]
-
-
-class CustomTlsConfig(TlsConfig):
-    """
-    Example custom TLS configuration for advanced use cases.
-
-    Note: SecureTlsConfig (using system CA certificates) is the default.
-    Use this only if you have specific requirements such as:
-    - Custom CA certificates
-    - Client certificates (mutual TLS)
-    - Custom cipher suites
-    """
-
-    def __init__(self, root_certificates=None, private_key=None, certificate_chain=None):
-        """
-        Initialize custom TLS configuration.
-
-        Args:
-            root_certificates: PEM-encoded root certificates (optional)
-            private_key: PEM-encoded private key for client certificate (optional)
-            certificate_chain: PEM-encoded certificate chain for client certificate (optional)
-        """
-        self.root_certificates = root_certificates
-        self.private_key = private_key
-        self.certificate_chain = certificate_chain
-
-    def to_channel_credentials(self) -> grpc.ChannelCredentials:
-        """
-        Convert TLS configuration to gRPC ChannelCredentials.
-
-        Returns:
-            grpc.ChannelCredentials: SSL channel credentials with custom settings
-        """
-        return grpc.ssl_channel_credentials(
-            root_certificates=self.root_certificates,
-            private_key=self.private_key,
-            certificate_chain=self.certificate_chain,
-        )
 
 
 def main():
@@ -151,7 +114,9 @@ def main():
         logger.info("✓ SDK initialized")
 
         # Step 2: Define table properties
-        table_properties = TableProperties(TABLE_NAME, record_pb2.AirQuality.DESCRIPTOR)
+        # Pass the serialized FileDescriptorProto as bytes
+        descriptor_bytes = record_pb2.AirQuality.DESCRIPTOR.file.serialized_pb
+        table_properties = TableProperties(TABLE_NAME, descriptor_bytes)
         logger.info(f"✓ Table properties configured for: {TABLE_NAME}")
 
         # Step 3: Create stream configuration with protobuf record type
@@ -167,59 +132,89 @@ def main():
 
         # Step 4: Create a stream with OAuth 2.0 authentication
         #
-        # Standard method: OAuth 2.0 Client Credentials with default TLS (SecureTlsConfig)
         # The SDK automatically:
-        #   - Uses system CA certificates for TLS
         #   - Includes authorization header with OAuth token
         #   - Includes x-databricks-zerobus-table-name header
         stream = sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options)
 
-        # Advanced: Custom TLS configuration (for special use cases only)
-        # Uncomment to use custom TLS (e.g., custom CA certificates, mTLS):
-        # custom_tls = CustomTlsConfig(root_certificates=your_ca_certs)
-        # stream = sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options, custom_tls)
-
         # Advanced: Custom headers provider (for special use cases only)
         # Uncomment to use custom headers instead of OAuth:
         # custom_provider = CustomHeadersProvider(custom_token="your-custom-token")
-        # stream = sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options, headers_provider=custom_provider)
-
-        # Advanced: Both custom TLS and custom headers provider
-        # Uncomment to use both:
-        # custom_tls = CustomTlsConfig(root_certificates=your_ca_certs)
-        # custom_provider = CustomHeadersProvider(custom_token="your-custom-token")
-        # stream = sdk.create_stream(CLIENT_ID, CLIENT_SECRET, table_properties, options, custom_tls, custom_provider)
-
-        logger.info(f"✓ Stream created: {stream.stream_id}")
+        # stream = sdk.create_stream(
+        #     CLIENT_ID, CLIENT_SECRET, table_properties, options,
+        #     headers_provider=custom_provider
+        # )
 
         # Step 5: Ingest records synchronously
-        logger.info(f"\nIngesting {NUM_RECORDS} records (blocking mode)...")
+        logger.info(f"\nDemonstrating different ingestion methods with protobuf...")
         start_time = time.time()
         success_count = 0
 
         try:
-            for i in range(NUM_RECORDS):
-                # Two ways to ingest protobuf records:
+            # ========================================================================
+            # Method 1: ingest_record_offset() - RECOMMENDED for single records
+            # ========================================================================
+            logger.info("\n1. Using ingest_record_offset() - optimized API")
+            for i in range(min(10, NUM_RECORDS)):
+                record = create_sample_record(i)
 
-                # Option 1: Pass a Message object (SDK serializes to bytes)
-                if i % 2 == 0:
-                    record = create_sample_record(i)
-                    ack = stream.ingest_record(record)
-
-                # Option 2: Pass pre-serialized bytes (client controls serialization)
-                else:
-                    record = create_sample_record(i)
-                    serialized_bytes = record.SerializeToString()
-                    ack = stream.ingest_record(serialized_bytes)
-
-                # Wait for record to be durably written
-                ack.wait_for_ack()
-
+                # Can pass Message object directly (SDK serializes)
+                offset = stream.ingest_record_offset(record)
+                logger.info(f"  Record {i} ingested at offset {offset}")
                 success_count += 1
 
-                # Progress indicator
-                if (i + 1) % 10 == 0:
-                    logger.info(f"  Ingested {i + 1} records")
+            # ========================================================================
+            # Method 2: ingest_records_offset() - RECOMMENDED for batch ingestion
+            # Ingests multiple records and returns one offset for the whole batch
+            # ========================================================================
+            logger.info("\n2. Using ingest_records_offset() - batch API")
+            batch_size = 20
+            for batch_num in range(2):
+                batch = []
+                for i in range(batch_size):
+                    idx = 10 + batch_num * batch_size + i
+                    if idx >= NUM_RECORDS:
+                        break
+                    record = create_sample_record(idx)
+                    # Can mix Message objects and pre-serialized bytes
+                    if i % 2 == 0:
+                        batch.append(record)
+                    else:
+                        batch.append(record.SerializeToString())
+
+                if batch:
+                    batch_offset = stream.ingest_records_offset(batch)
+                    logger.info(f"  Batch {batch_num + 1}: {len(batch)} records, offset: {batch_offset}")
+                    success_count += len(batch)
+
+            # ========================================================================
+            # Method 3: ingest_record_nowait() - Fire-and-forget
+            # ========================================================================
+            logger.info("\n3. Using ingest_record_nowait() - fire-and-forget")
+            remaining = NUM_RECORDS - success_count
+            if remaining > 0:
+                for i in range(min(10, remaining)):
+                    record = create_sample_record(success_count + i)
+                    stream.ingest_record_nowait(record)
+                logger.info(f"  Queued {min(10, remaining)} records (no wait for ack)")
+                success_count += min(10, remaining)
+
+            # ========================================================================
+            # Method 4: ingest_records_nowait() - Batch fire-and-forget
+            # ========================================================================
+            logger.info("\n4. Using ingest_records_nowait() - batch fire-and-forget")
+            remaining = NUM_RECORDS - success_count
+            if remaining > 0:
+                batch = [create_sample_record(success_count + i) for i in range(remaining)]
+                stream.ingest_records_nowait(batch)
+                logger.info(f"  Queued {len(batch)} records in batch (no wait for ack)")
+                success_count += len(batch)
+
+            # ========================================================================
+            # Legacy Method: ingest_record() - DEPRECATED
+            # ========================================================================
+            # ack = stream.ingest_record(record)  # Deprecated
+            # offset = ack.wait_for_ack()  # Extra step needed
 
             end_time = time.time()
             duration_seconds = end_time - start_time
@@ -241,7 +236,6 @@ def main():
             print(f"  Failed: {NUM_RECORDS - success_count}")
             print(f"  Duration: {duration_seconds:.2f} seconds")
             print(f"  Throughput: {records_per_second:.2f} records/sec")
-            print(f"  Stream state: {stream.get_state()}")
             print("  Record type: Protobuf")
             print("=" * 60)
 

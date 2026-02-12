@@ -8,7 +8,7 @@
 
 We are keen to hear feedback from you on this SDK. Please [file issues](https://github.com/databricks/zerobus-sdk-py/issues), and we will address them.
 
-The Databricks Zerobus Ingest SDK for Python provides a high-performance client for ingesting data directly into Databricks Delta tables using the Zerobus streaming protocol. | See also the [SDK for Rust](https://github.com/databricks/zerobus-sdk-rs) | See also the [SDK for Java](https://github.com/databricks/zerobus-sdk-java)
+The Databricks Zerobus Ingest SDK for Python provides a high-performance, Rust-backed client for ingesting data directly into Databricks Delta tables using the Zerobus streaming protocol. Built on top of the battle-tested [Rust SDK](https://github.com/databricks/zerobus-sdk-rs) using PyO3 bindings, it delivers native performance with a Python-friendly API. | See also the [SDK for Java](https://github.com/databricks/zerobus-sdk-java)
 
 ## Table of Contents
 
@@ -29,17 +29,54 @@ The Databricks Zerobus Ingest SDK for Python provides a high-performance client 
 - [Error Handling](#error-handling)
 - [API Reference](#api-reference)
 - [Best Practices](#best-practices)
+- [Handling Stream Failures](#handling-stream-failures)
+- [Performance Tips](#performance-tips)
+- [Debugging](#debugging)
 
 ## Features
 
-- **High-throughput ingestion**: Optimized for high-volume data ingestion
-- **Automatic recovery**: Built-in retry and recovery mechanisms
+- **Rust-backed performance**: Native Rust implementation with Python bindings for maximum throughput and minimal latency
+- **High-throughput ingestion**: Optimized for high-volume data ingestion with native async/await support
+- **Automatic recovery**: Built-in retry and recovery mechanisms from the Rust SDK
 - **Flexible configuration**: Customizable stream behavior and timeouts
 - **Multiple serialization formats**: Support for JSON and Protocol Buffers
 - **OAuth 2.0 authentication**: Secure authentication with client credentials
-- **Configurable TLS**: Custom TLS configuration support for advanced security requirements
-- **Sync and Async support**: Both synchronous and asynchronous APIs
-- **Comprehensive logging**: Detailed logging using Python's standard logging framework
+- **Type safety**: Rust's type system ensures reliability and correctness
+- **Sync and Async support**: Both synchronous and asynchronous Python APIs
+- **Zero-copy operations**: Efficient data handling with minimal overhead
+
+## Architecture
+
+The Python SDK is a thin wrapper around the [Databricks Zerobus Rust SDK](https://github.com/databricks/zerobus-sdk-rs), built using PyO3 bindings:
+
+```
+┌─────────────────────────────────────────┐
+│         Python Application Code         │
+│  (Your code using the Python SDK API)  │
+└─────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────┐
+│       Python SDK (Thin Wrapper)         │
+│    • API compatibility layer            │
+│    • Python types & error handling      │
+└─────────────────────────────────────────┘
+                    │
+                    ▼ (PyO3 bindings)
+┌─────────────────────────────────────────┐
+│         Rust Core Implementation        │
+│    • gRPC communication                 │
+│    • OAuth 2.0 authentication           │
+│    • Stream management & recovery       │
+│    • Protocol encoding/decoding         │
+└─────────────────────────────────────────┘
+```
+
+This architecture provides:
+- **Native performance** through Rust's zero-cost abstractions
+- **Memory safety** without garbage collection overhead
+- **Single source of truth** for all SDK implementations
+- **Python-friendly API** with full type hints and IDE support
 
 ## Requirements
 
@@ -50,9 +87,10 @@ The Databricks Zerobus Ingest SDK for Python provides a high-performance client 
 
 ### Dependencies
 
-- `protobuf` >= 4.25.0, < 7.0
-- `grpcio` >= 1.60.0, < 2.0
-- `requests` >= 2.28.1, < 3
+- `protobuf` >= 4.25.0, < 7.0 (for Protocol Buffer schema handling)
+- `requests` >= 2.28.1, < 3 (only for the `generate_proto` utility tool)
+
+**Note**: All core ingestion functionality (gRPC, OAuth authentication, stream management) is handled by the native Rust implementation. The `requests` dependency is only used by the optional `generate_proto.py` tool for fetching table schemas from Unity Catalog.
 
 ## Quick Start User Guide
 
@@ -118,7 +156,7 @@ GRANT SELECT, MODIFY ON TABLE <catalog_name>.default.air_quality TO `<service-pr
 
 ### Installation
 
-#### From PyPI
+#### From PyPI (Recommended)
 
 Install the latest stable version using pip:
 
@@ -126,15 +164,31 @@ Install the latest stable version using pip:
 pip install databricks-zerobus-ingest-sdk
 ```
 
+Pre-built wheels are available for:
+- **Linux**: x86_64, aarch64 (manylinux)
+- **macOS**: x86_64, arm64 (universal2)
+- **Windows**: x86_64
+
 #### From Source
 
-Clone the repository and install from source:
+Building from source requires the **Rust toolchain** (install from [rustup.rs](https://rustup.rs/)).
 
 ```bash
+# Install Rust (if not already installed)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Clone and install
 git clone https://github.com/databricks/zerobus-sdk-py.git
 cd zerobus-sdk-py
 pip install -e .
 ```
+
+The SDK uses [maturin](https://github.com/PyO3/maturin) to build Python bindings for the Rust implementation. Installation via `pip install -e .` automatically:
+1. Installs maturin if needed
+2. Compiles the Rust extension
+3. Installs the package in editable mode
+
+**For active development**, see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed build instructions and development workflows.
 
 ### Choose Your Serialization Format
 
@@ -519,17 +573,20 @@ import asyncio
 import json
 import logging
 from zerobus.sdk.aio import ZerobusSdk
-from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties
+from zerobus.sdk.shared import RecordType, StreamConfigurationOptions, TableProperties, AckCallback
 
 logging.basicConfig(level=logging.INFO)
 
 async def main():
+    # Create a custom callback class
+    class MyCallback(AckCallback):
+        def on_ack(self, offset: int):
+            print(f"Acknowledged offset: {offset}")
+
     options = StreamConfigurationOptions(
         record_type=RecordType.JSON,
         max_inflight_records=50000,
-        ack_callback=lambda response: print(
-            f"Acknowledged offset: {response.durability_ack_up_to_offset}"
-        )
+        ack_callback=MyCallback()
     )
 
     sdk = ZerobusSdk(server_endpoint, workspace_url)
@@ -594,17 +651,20 @@ finally:
 import asyncio
 import logging
 from zerobus.sdk.aio import ZerobusSdk
-from zerobus.sdk.shared import TableProperties, StreamConfigurationOptions
+from zerobus.sdk.shared import TableProperties, StreamConfigurationOptions, AckCallback
 import record_pb2
 
 logging.basicConfig(level=logging.INFO)
 
 async def main():
+    # Create a custom callback class
+    class MyCallback(AckCallback):
+        def on_ack(self, offset: int):
+            print(f"Acknowledged offset: {offset}")
+
     options = StreamConfigurationOptions(
         max_inflight_records=50000,
-        ack_callback=lambda response: print(
-            f"Acknowledged offset: {response.durability_ack_up_to_offset}"
-        )
+        ack_callback=MyCallback()
     )
 
     sdk = ZerobusSdk(server_endpoint, workspace_url)
@@ -647,40 +707,88 @@ table_properties = TableProperties(table_name, record_pb2.AirQuality.DESCRIPTOR)
 stream = sdk.create_stream(client_id, client_secret, table_properties)
 ```
 
-The SDK automatically handles OAuth 2.0 authentication and uses secure TLS connections with system CA certificates by default.
+The SDK automatically handles OAuth 2.0 authentication and uses secure TLS connections by default.
 
-For advanced use cases requiring custom authentication headers or TLS configuration, see the `HeadersProvider` and `TlsConfig` sections in the API Reference below.
+For advanced use cases requiring custom authentication headers, see the `HeadersProvider` section in the API Reference below.
 
 ## Configuration
 
 ### Stream Configuration Options
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `record_type` | `RecordType.PROTO` | Serialization format: `RecordType.PROTO` or `RecordType.JSON` |
-| `max_inflight_records` | 50000 | Maximum number of unacknowledged records |
-| `recovery` | True | Enable automatic stream recovery |
-| `recovery_timeout_ms` | 15000 | Timeout for recovery operations (ms) |
-| `recovery_backoff_ms` | 2000 | Delay between recovery attempts (ms) |
-| `recovery_retries` | 3 | Maximum number of recovery attempts |
-| `flush_timeout_ms` | 300000 | Timeout for flush operations (ms) |
-| `server_lack_of_ack_timeout_ms` | 60000 | Server acknowledgment timeout (ms) |
-| `ack_callback` | None | Callback invoked on record acknowledgment |
-
-### Example Configuration
+Configure stream behavior by passing a `StreamConfigurationOptions` object to `create_stream()`:
 
 ```python
-from zerobus.sdk.shared import StreamConfigurationOptions
+from zerobus.sdk.sync import ZerobusSdk
+from zerobus.sdk.shared import StreamConfigurationOptions, RecordType, TableProperties
 
+sdk = ZerobusSdk(server_endpoint, workspace_url)
+table_properties = TableProperties(table_name)
+
+# Optional: Create a custom callback class
+class MyCallback(AckCallback):
+    def on_ack(self, offset: int):
+        print(f"Ack: {offset}")
+
+# Create options with custom configuration
 options = StreamConfigurationOptions(
+    record_type=RecordType.JSON,
     max_inflight_records=10000,
     recovery=True,
     recovery_timeout_ms=20000,
-    ack_callback=lambda response: print(
-        f"Ack: {response.durability_ack_up_to_offset}"
-    )
+    ack_callback=MyCallback()  # Optional - can be None
 )
 
+# Pass options when creating the stream
+stream = sdk.create_stream(
+    client_id,
+    client_secret,
+    table_properties,
+    options  # <-- Configuration options passed here
+)
+```
+
+**All options are optional** - if not specified, defaults will be used.
+
+### Available Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `record_type` | `RecordType` | `RecordType.PROTO` | Serialization format: `RecordType.PROTO` or `RecordType.JSON` |
+| `max_inflight_records` | `int` | `50000` | Maximum number of unacknowledged records |
+| `recovery` | `bool` | `True` | Enable automatic stream recovery |
+| `recovery_timeout_ms` | `int` | `15000` | Timeout for recovery operations (ms) |
+| `recovery_backoff_ms` | `int` | `2000` | Delay between recovery attempts (ms) |
+| `recovery_retries` | `int` | `3` | Maximum number of recovery attempts |
+| `flush_timeout_ms` | `int` | `300000` | Timeout for flush operations (ms) |
+| `server_lack_of_ack_timeout_ms` | `int` | `60000` | Server acknowledgment timeout (ms) |
+| `stream_paused_max_wait_time_ms` | `Optional[int]` | `None` | Max time (ms) to wait during graceful stream close. `None` = wait for full server duration, `0` = immediate, `x` = wait up to min(x, server_duration) |
+| `callback_max_wait_time_ms` | `Optional[int]` | `5000` | Max time (ms) to wait for callbacks to finish after `close()`. `None` = wait forever, `x` = wait up to x ms |
+| `ack_callback` | `AckCallback` | `None` | Callback invoked on record acknowledgment (must be a class extending `AckCallback`) |
+
+### Acknowledgment Callbacks
+
+The `ack_callback` parameter requires a custom class extending `AckCallback`:
+
+```python
+from zerobus.sdk.shared import AckCallback, StreamConfigurationOptions
+
+class MyCallback(AckCallback):
+    def on_ack(self, offset: int):
+        # Called when a record is successfully acknowledged
+        print(f"Record at offset {offset} was acknowledged")
+        # You can track metrics, update UI, etc.
+
+    def on_error(self, offset: int, error_message: str):
+        # Called when a record encounters an error
+        print(f"Record at offset {offset} failed: {error_message}")
+        # Handle errors, log, retry, etc.
+
+# Create options with the callback
+options = StreamConfigurationOptions(
+    ack_callback=MyCallback()
+)
+
+# Use the options when creating a stream
 stream = sdk.create_stream(
     client_id,
     client_secret,
@@ -736,7 +844,6 @@ def create_stream(
     client_secret: str,
     table_properties: TableProperties,
     options: StreamConfigurationOptions = None,
-    tls_config: TlsConfig = None,
     headers_provider: HeadersProvider = None
 ) -> ZerobusStream
 ```
@@ -747,7 +854,6 @@ Creates a new ingestion stream using OAuth 2.0 Client Credentials authentication
 - `client_secret` (str) - OAuth client secret (ignored if `headers_provider` is provided)
 - `table_properties` (TableProperties) - Target table configuration
 - `options` (StreamConfigurationOptions) - Stream behavior configuration (optional)
-- `tls_config` (TlsConfig) - Custom TLS configuration (optional, defaults to `SecureTlsConfig`)
 - `headers_provider` (HeadersProvider) - Custom headers provider (optional, defaults to OAuth)
 
 Automatically includes these headers (when using default OAuth):
@@ -773,7 +879,6 @@ async def create_stream(
     client_secret: str,
     table_properties: TableProperties,
     options: StreamConfigurationOptions = None,
-    tls_config: TlsConfig = None,
     headers_provider: HeadersProvider = None
 ) -> ZerobusStream
 ```
@@ -784,7 +889,6 @@ Creates a new ingestion stream using OAuth 2.0 Client Credentials authentication
 - `client_secret` (str) - OAuth client secret (ignored if `headers_provider` is provided)
 - `table_properties` (TableProperties) - Target table configuration
 - `options` (StreamConfigurationOptions) - Stream behavior configuration (optional)
-- `tls_config` (TlsConfig) - Custom TLS configuration (optional, defaults to `SecureTlsConfig`)
 - `headers_provider` (HeadersProvider) - Custom headers provider (optional, defaults to OAuth)
 
 Automatically includes these headers (when using default OAuth):
@@ -801,14 +905,57 @@ Represents an active ingestion stream.
 
 **Synchronous Methods:**
 
+**Single Record Ingestion:**
+
+```python
+def ingest_record_offset(record: Union[Message, dict, bytes, str]) -> int
+```
+**RECOMMENDED** - Ingests a single record and returns the offset after queueing.
+
+```python
+def ingest_record_nowait(record: Union[Message, dict, bytes, str]) -> None
+```
+**RECOMMENDED** - Fire-and-forget ingestion. Submits the record without waiting or returning an offset. Best for maximum throughput.
+
 ```python
 def ingest_record(record: Union[Message, dict, bytes, str]) -> RecordAcknowledgment
 ```
-Ingests a single record. Returns a `RecordAcknowledgment` for tracking.
+**DEPRECATED since v0.3.0** - Use `ingest_record_offset()` or `ingest_record_nowait()` instead for better performance.
 
-**Accepted record types:**
-- **JSON mode**: `dict` (SDK serializes) or `str` (pre-serialized JSON string)
-- **Protobuf mode**: `Message` object (SDK serializes) or `bytes` (pre-serialized)
+**Batch Ingestion:**
+
+```python
+def ingest_records_offset(records: List[Union[Message, dict, bytes, str]]) -> int
+```
+Ingests a batch of records and returns the final offset immediately. More efficient than individual calls for bulk ingestion.
+
+```python
+def ingest_records_nowait(records: List[Union[Message, dict, bytes, str]]) -> None
+```
+Fire-and-forget batch ingestion. Submits all records without waiting. Most efficient for bulk ingestion.
+
+
+```python
+def get_unacked_records() -> List[bytes]
+```
+Returns a list of unacknowledged records (as raw bytes). These are records that have been ingested but not yet acknowledged by the server.
+
+**Important**: Records are returned in their serialized form:
+- **JSON mode**: Decode with `json.loads(record.decode('utf-8'))`
+- **Protobuf mode**: Deserialize with `YourMessage.FromString(record)` or use as-is if pre-serialized
+
+Useful for recovery and monitoring.
+
+```python
+def get_unacked_batches() -> List[List[bytes]]
+```
+Returns a list of unacknowledged batches, where each batch is a list of records (as raw bytes). These are batches that have been sent but not yet acknowledged by the server.
+
+**Important**: Records are returned in their serialized form (see `get_unacked_records()` for decoding).
+
+Useful for batch retry logic.
+
+**Stream Management:**
 
 ```python
 def flush() -> None
@@ -820,29 +967,79 @@ def close() -> None
 ```
 Flushes and closes the stream gracefully. Always call in a `finally` block.
 
-```python
-def get_state() -> StreamState
-```
-Returns the current stream state.
 
-```python
-@property
-def stream_id() -> str
-```
-Returns the unique stream ID assigned by the server.
+**Accepted Record Types (all methods):**
+- **JSON mode**: `dict` (SDK serializes) or `str` (pre-serialized JSON string)
+- **Protobuf mode**: `Message` object (SDK serializes) or `bytes` (pre-serialized)
 
 ---
 
 **Asynchronous Methods:**
 
+**Single Record Ingestion:**
+
+```python
+async def ingest_record_offset(record: Union[Message, dict, bytes, str]) -> int
+```
+**RECOMMENDED** - Ingests a single record and returns the offset after queueing.
+
+```python
+def ingest_record_nowait(record: Union[Message, dict, bytes, str]) -> None
+```
+**RECOMMENDED** - Fire-and-forget ingestion. Submits the record without waiting. Not async (don't use `await`). Best for maximum throughput.
+
 ```python
 async def ingest_record(record: Union[Message, dict, bytes, str]) -> Awaitable
 ```
-Ingests a single record. Returns an awaitable that completes when the record is durably written.
+**DEPRECATED since v0.3.0** - Use `ingest_record_offset()` or `ingest_record_nowait()` instead for better performance.
 
-**Accepted record types:**
-- **JSON mode**: `dict` (SDK serializes) or `str` (pre-serialized JSON string)
-- **Protobuf mode**: `Message` object (SDK serializes) or `bytes` (pre-serialized)
+**Batch Ingestion:**
+
+```python
+async def ingest_records_offset(records: List[Union[Message, dict, bytes, str]]) -> int
+```
+Ingests a batch of records and returns the final offset immediately. More efficient than individual calls for bulk ingestion.
+
+```python
+def ingest_records_nowait(records: List[Union[Message, dict, bytes, str]]) -> None
+```
+Fire-and-forget batch ingestion. Submits all records without waiting. Not async (don't use `await`). Most efficient for bulk ingestion.
+
+**Offset Tracking:**
+
+```python
+async def wait_for_offset(offset: int) -> None
+```
+Waits for a specific offset to be acknowledged by the server. Useful when you have an offset from `ingest_record_offset()` and want to ensure it's durably written:
+```python
+offset = await stream.ingest_record_offset(record)
+# Do other work...
+await stream.wait_for_offset(offset)  # Ensure this offset is acknowledged
+```
+
+**Stream Monitoring:**
+
+```python
+async def get_unacked_records() -> List[bytes]
+```
+Returns a list of unacknowledged records (as raw bytes). These are records that have been ingested but not yet acknowledged by the server.
+
+**Important**: Records are returned in their serialized form:
+- **JSON mode**: Decode with `json.loads(record.decode('utf-8'))`
+- **Protobuf mode**: Deserialize with `YourMessage.FromString(record)` or use as-is if pre-serialized
+
+Useful for recovery and monitoring.
+
+```python
+async def get_unacked_batches() -> List[List[bytes]]
+```
+Returns a list of unacknowledged batches, where each batch is a list of records (as raw bytes). These are batches that have been sent but not yet acknowledged by the server.
+
+**Important**: Records are returned in their serialized form (see `get_unacked_records()` for decoding).
+
+Useful for batch retry logic.
+
+**Stream Management:**
 
 ```python
 async def flush() -> None
@@ -854,16 +1051,11 @@ async def close() -> None
 ```
 Flushes and closes the stream gracefully. Always call in a `finally` block.
 
-```python
-def get_state() -> StreamState
-```
-Returns the current stream state.
-
-```python
-@property
-def stream_id() -> str
-```
 Returns the unique stream ID assigned by the server.
+
+**Accepted Record Types (all methods):**
+- **JSON mode**: `dict` (SDK serializes) or `str` (pre-serialized JSON string)
+- **Protobuf mode**: `Message` object (SDK serializes) or `bytes` (pre-serialized)
 
 ---
 
@@ -895,21 +1087,11 @@ table_properties = TableProperties("catalog.schema.table", record_pb2.MyMessage.
 
 ### HeadersProvider
 
-Abstract base class for providing authentication headers to gRPC streams.
+Abstract base class for providing custom authentication headers to gRPC streams.
 
-**Default:** The SDK uses `OAuthHeadersProvider` internally, which handles OAuth 2.0 Client Credentials authentication automatically when you call `create_stream()`.
+**Default:** The SDK handles OAuth 2.0 Client Credentials authentication internally when you provide `client_id` and `client_secret` to `create_stream()`. You don't need to implement any headers provider for standard OAuth authentication.
 
-**Custom Implementation:** For advanced use cases, you can implement a custom `HeadersProvider` by extending the base class and implementing the `get_headers()` method. Custom providers must include both the `authorization` and `x-databricks-zerobus-table-name` headers. See example files for implementation details.
-
----
-
-### TlsConfig
-
-Abstract base class for configuring TLS/SSL settings for gRPC connections.
-
-**Default:** The SDK uses `SecureTlsConfig` with system CA certificates automatically when you call `create_stream()`.
-
-**Custom Implementation:** For advanced use cases (custom CA certificates, mutual TLS, custom cipher suites), you can implement a custom `TlsConfig` by extending the base class and implementing the `to_channel_credentials()` method. See example files for implementation details.
+**Custom Implementation:** For advanced use cases (e.g., custom token providers, non-OAuth authentication), you can implement a custom `HeadersProvider` by extending the base class and implementing the `get_headers()` method. Custom providers must include both the `authorization` and `x-databricks-zerobus-table-name` headers. See example files for implementation details.
 
 ---
 
@@ -928,7 +1110,9 @@ StreamConfigurationOptions(
     recovery_retries: int = 3,
     flush_timeout_ms: int = 300000,
     server_lack_of_ack_timeout_ms: int = 60000,
-    ack_callback: Callable = None
+    stream_paused_max_wait_time_ms: Optional[int] = None,
+    callback_max_wait_time_ms: Optional[int] = 5000,
+    ack_callback: AckCallback = None
 )
 ```
 
@@ -941,7 +1125,77 @@ StreamConfigurationOptions(
 - `recovery_retries` (int) - Maximum number of recovery attempts (default: 3)
 - `flush_timeout_ms` (int) - Flush operation timeout in milliseconds (default: 300000)
 - `server_lack_of_ack_timeout_ms` (int) - Server acknowledgment timeout in milliseconds (default: 60000)
-- `ack_callback` (Callable) - Callback to be invoked when records are acknowledged by the server (default: None)
+- `stream_paused_max_wait_time_ms` (Optional[int]) - Maximum time in milliseconds to wait during graceful stream close. When the server signals stream closure, the SDK can pause and wait for in-flight records to be acknowledged. `None` = wait for full server-specified duration (most graceful), `0` = immediate recovery, `x` = wait up to min(x, server_duration) milliseconds (default: None)
+- `callback_max_wait_time_ms` (Optional[int]) - Maximum time in milliseconds to wait for callbacks to finish after calling `close()` on the stream. `None` = wait forever, `x` = wait up to x milliseconds (default: 5000)
+- `ack_callback` (AckCallback) - Callback to be invoked when records are acknowledged or encounter errors. Must be a custom class extending `AckCallback` that implements `on_ack()` and optionally `on_error()` methods. (default: None)
+
+**Example:**
+```python
+from zerobus.sdk.shared import StreamConfigurationOptions, RecordType, AckCallback
+
+# Create a custom callback class
+class MyCallback(AckCallback):
+    def on_ack(self, offset: int):
+        print(f"Ack: {offset}")
+
+    def on_error(self, offset: int, error_message: str):
+        print(f"Error at {offset}: {error_message}")
+
+# Use the callback in options
+options = StreamConfigurationOptions(
+    record_type=RecordType.JSON,
+    max_inflight_records=10000,
+    ack_callback=MyCallback()
+)
+
+# Pass to create_stream()
+stream = sdk.create_stream(client_id, client_secret, table_properties, options)
+```
+
+---
+
+### AckCallback
+
+Abstract base class for custom acknowledgment callbacks.
+
+**Usage:**
+```python
+from zerobus.sdk.shared import AckCallback, StreamConfigurationOptions
+
+class MyCallback(AckCallback):
+    def on_ack(self, offset: int):
+        # Called when a record is acknowledged by the server
+        print(f"Record at offset {offset} acknowledged")
+        # Add custom logic: metrics, logging, UI updates, etc.
+
+    def on_error(self, offset: int, error_message: str):
+        # Called when a record encounters an error
+        print(f"Record at offset {offset} failed: {error_message}")
+        # Add custom error handling
+
+# Use in StreamConfigurationOptions
+options = StreamConfigurationOptions(ack_callback=MyCallback())
+stream = sdk.create_stream(client_id, client_secret, table_properties, options)
+```
+
+**Methods:**
+
+```python
+def on_ack(self, offset: int) -> None
+```
+Called when a record is successfully acknowledged by the server.
+
+**Parameters:**
+- `offset` (int) - The offset of the acknowledged record
+
+```python
+def on_error(self, offset: int, error_message: str) -> None
+```
+Called when a record encounters an error.
+
+**Parameters:**
+- `offset` (int) - The offset of the failed record
+- `error_message` (str) - Description of the error
 
 ---
 
@@ -965,20 +1219,6 @@ Adds a callback to be invoked when the record is acknowledged.
 def is_done() -> bool
 ```
 Returns True if the record has been acknowledged.
-
----
-
-### StreamState (Enum)
-
-Represents the lifecycle state of a stream.
-
-**Values:**
-- `UNINITIALIZED` - Stream created but not yet initialized
-- `OPENED` - Stream is open and accepting records
-- `FLUSHING` - Stream is flushing pending records
-- `RECOVERING` - Stream is recovering from a failure
-- `CLOSED` - Stream has been gracefully closed
-- `FAILED` - Stream has failed and cannot be recovered
 
 ---
 
@@ -1011,3 +1251,198 @@ NonRetriableException(message: str, cause: Exception = None)
 5. **Monitoring**: Use `ack_callback` to track ingestion progress
 6. **Choose the right API**: Use sync API for low-volume, async API for high-volume ingestion
 7. **Token refresh**: Tokens are automatically refreshed on stream creation and recovery
+
+## Handling Stream Failures
+
+**Note**: The SDK automatically handles retries and recovery for transient errors. These methods are only needed when a stream has **permanently failed** (e.g., non-retriable error, max retries exceeded, or stream closed).
+
+When a stream permanently fails, you can retrieve unacknowledged records to save them or retry with a new stream.
+
+### When to Use These Methods
+
+Use `get_unacked_records()` and `get_unacked_batches()` when:
+- Stream closed due to non-retriable error
+- Maximum retry attempts exceeded
+- You need to abandon the stream and save pending data
+- Implementing custom failure handling logic
+
+### Retrieving Unacknowledged Records After Failure
+
+**Synchronous:**
+```python
+from zerobus import NonRetriableException
+
+try:
+    for i in range(10000):
+        stream.ingest_record_offset(record)
+    stream.flush()
+except NonRetriableException as e:
+    # Stream failed permanently - retrieve unacked records
+    print(f"Stream failed: {e}")
+    unacked_records = stream.get_unacked_records()  # Returns List[bytes]
+    unacked_batches = stream.get_unacked_batches()  # Returns List[List[bytes]]
+
+    print(f"Lost {len(unacked_records)} unacknowledged records")
+
+    # Save to file or database for later retry
+    with open('failed_records.bin', 'wb') as f:
+        for record in unacked_records:
+            f.write(len(record).to_bytes(4, 'big'))  # Write length prefix
+            f.write(record)
+```
+
+**Asynchronous:**
+```python
+from zerobus import NonRetriableException
+
+try:
+    for i in range(10000):
+        await stream.ingest_record_offset(record)
+    await stream.flush()
+except NonRetriableException as e:
+    # Stream failed permanently - retrieve unacked records
+    print(f"Stream failed: {e}")
+    unacked_records = await stream.get_unacked_records()  # Returns List[bytes]
+    unacked_batches = await stream.get_unacked_batches()  # Returns List[List[bytes]]
+
+    print(f"Lost {len(unacked_records)} unacknowledged records")
+
+    # Save for later retry with a new stream
+    import pickle
+    with open('failed_records.pkl', 'wb') as f:
+        pickle.dump(unacked_records, f)
+```
+
+### Retrying with a New Stream
+
+After retrieving unacked records, create a new stream to retry them:
+
+**JSON Mode:**
+```python
+import json
+
+# After stream failure, get unacked records
+unacked_records = stream.get_unacked_records()
+print(f"Retrieved {len(unacked_records)} unacked records")
+
+# Close the failed stream
+stream.close()
+
+# Create a new stream
+new_stream = sdk.create_stream(client_id, client_secret, table_properties, options)
+
+# Retry unacked records with the new stream
+for record_bytes in unacked_records:
+    # Option 1: Pass bytes directly (most efficient)
+    new_stream.ingest_record_offset(record_bytes)
+
+    # Option 2: Decode and inspect before retrying
+    # record_dict = json.loads(record_bytes.decode('utf-8'))
+    # print(f"Retrying: {record_dict}")
+    # new_stream.ingest_record_offset(record_dict)
+
+new_stream.flush()
+new_stream.close()
+```
+
+**Protobuf Mode:**
+```python
+import your_proto_pb2
+
+# After stream failure, get unacked records
+unacked_records = stream.get_unacked_records()
+print(f"Retrieved {len(unacked_records)} unacked records")
+
+# Close the failed stream
+stream.close()
+
+# Create a new stream
+new_stream = sdk.create_stream(client_id, client_secret, table_properties, options)
+
+# Retry unacked records with the new stream
+for record_bytes in unacked_records:
+    # Option 1: Pass bytes directly (most efficient)
+    new_stream.ingest_record_offset(record_bytes)
+
+    # Option 2: Deserialize and inspect before retrying
+    # record = your_proto_pb2.YourMessage()
+    # record.ParseFromString(record_bytes)
+    # print(f"Retrying: {record}")
+    # new_stream.ingest_record_offset(record)
+
+new_stream.flush()
+new_stream.close()
+```
+
+### Batch Retry
+
+```python
+# Get unacknowledged batches from failed stream
+unacked_batches = stream.get_unacked_batches()
+print(f"Retrieved {len(unacked_batches)} unacked batches")
+
+# Close the failed stream
+stream.close()
+
+# Create a new stream
+new_stream = sdk.create_stream(client_id, client_secret, table_properties, options)
+
+# Retry entire batches at once
+for batch in unacked_batches:
+    new_stream.ingest_records_offset(batch)  # Batch retry
+
+new_stream.flush()
+new_stream.close()
+```
+
+## Performance Tips
+
+The SDK provides multiple ingestion methods optimized for different use cases:
+
+### Method Comparison
+
+| Method | Throughput | Acknowledgment | Use Case |
+|--------|-----------|----------------|----------|
+| `ingest_record()` | Low | Yes, tracked | When you need individual record tracking |
+| `ingest_record_offset()` | Medium | Returns offset | When you need offsets but not full tracking |
+| `ingest_record_nowait()` | **Highest** | No | Maximum throughput, fire-and-forget |
+
+### Performance Comparison
+
+Benchmarked with 100k records on a local connection:
+
+| Record Size | `ingest_record` (sequential) | `ingest_record_nowait` |
+|-------------|------------------------------|------------------------|
+| 20 bytes    | 0.35 MB/s                    | 7.55 MB/s (20x faster) |
+| 220 bytes   | 2.00 MB/s                    | 77 MB/s (38x faster)   |
+| 750 bytes   | 16 MB/s                      | 257 MB/s (16x faster)  |
+| 10 KB       | 188 MB/s                     | 382 MB/s (2x faster)   |
+
+**Key Insight**: The performance gap is largest for small records due to context switching overhead in sequential awaits. Use batched submission or `nowait` methods for optimal throughput.
+
+## Debugging
+
+### Enabling Debug Logs
+
+The SDK uses Rust's `tracing` framework for logging. You can control log levels using the `RUST_LOG` environment variable:
+
+```bash
+# Set log level to debug for all components
+export RUST_LOG=debug
+
+# Set log level to trace for detailed debugging
+export RUST_LOG=trace
+
+# Set log level only for zerobus SDK components
+export RUST_LOG=zerobus_sdk=debug
+
+# Multiple targets with different levels
+export RUST_LOG=zerobus_sdk=trace,tokio=info
+```
+
+**Log Levels** (from least to most verbose):
+- `error` - Only errors
+- `warn` - Warnings and errors
+- `info` - Informational messages (default)
+- `debug` - Detailed debugging information
+- `trace` - Very detailed trace information

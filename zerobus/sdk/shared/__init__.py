@@ -1,36 +1,28 @@
-from . import zerobus_service_pb2, zerobus_service_pb2_grpc
-from .definitions import (
-    NOT_RETRIABLE_GRPC_CODES,
+"""
+Shared utilities for Zerobus SDK.
+
+This module provides Python wrappers around Rust types with comprehensive
+documentation and type hints.
+"""
+
+# Re-export Rust types that don't need wrappers
+from zerobus._zerobus_core import (
+    HeadersProvider,
     NonRetriableException,
     RecordType,
-    StreamConfigurationOptions,
-    StreamState,
     TableProperties,
     ZerobusException,
-    _StreamFailureInfo,
-    _StreamFailureType,
-    get_zerobus_token,
-    log_and_get_exception,
 )
-from .headers_provider import HeadersProvider, OAuthHeadersProvider
-from .tls_config import SecureTlsConfig, TlsConfig
+
+# Import Python wrappers with documentation
+from zerobus.sdk.shared.config import AckCallback, StreamConfigurationOptions
 
 __all__ = [
-    "TableProperties",
-    "StreamConfigurationOptions",
-    "RecordType",
-    "ZerobusException",
-    "StreamState",
-    "_StreamFailureType",
-    "_StreamFailureInfo",
-    "zerobus_service_pb2_grpc",
-    "zerobus_service_pb2",
-    "NonRetriableException",
-    "NOT_RETRIABLE_GRPC_CODES",
-    "log_and_get_exception",
-    "get_zerobus_token",
-    "OAuthHeadersProvider",
+    "AckCallback",
     "HeadersProvider",
-    "SecureTlsConfig",
-    "TlsConfig",
+    "NonRetriableException",
+    "RecordType",
+    "StreamConfigurationOptions",
+    "TableProperties",
+    "ZerobusException",
 ]

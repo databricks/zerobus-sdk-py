@@ -1,879 +1,221 @@
-import asyncio
-import json
-import logging
-from collections import OrderedDict
-from typing import Callable, Iterator, Optional, Union
+"""
+Asynchronous Zerobus SDK (Rust-backed).
 
-import grpc
-from google.protobuf.descriptor_pb2 import DescriptorProto
-from google.protobuf.message import Message
+This module provides a high-performance asynchronous interface for ingesting records
+into Databricks tables via the Zerobus service. The implementation is backed by a
+Rust core with native async/await support for optimal performance in async applications.
 
-from ..shared import (
-    NOT_RETRIABLE_GRPC_CODES,
-    NonRetriableException,
-    RecordType,
-    StreamConfigurationOptions,
-    StreamState,
-    TableProperties,
-    ZerobusException,
-    _StreamFailureInfo,
-    _StreamFailureType,
-    log_and_get_exception,
-    zerobus_service_pb2,
-    zerobus_service_pb2_grpc,
-)
-from ..shared.headers_provider import HeadersProvider, OAuthHeadersProvider
-from ..shared.tls_config import SecureTlsConfig, TlsConfig
+Example:
+    >>> import asyncio
+    >>> from zerobus.sdk.aio import ZerobusSdk, TableProperties
+    >>>
+    >>> async def main():
+    ...     sdk = ZerobusSdk(
+    ...         host="shard.zerobus.databricks.com",
+    ...         unity_catalog_url="https://workspace.databricks.com"
+    ...     )
+    ...
+    ...     props = TableProperties("catalog.schema.table")
+    ...     stream = await sdk.create_stream(
+    ...         table_properties=props,
+    ...         client_id="your-client-id",
+    ...         client_secret="your-client-secret"
+    ...     )
+    ...
+    ...     # Optimized async API - returns offset directly
+    ...     offset = await stream.ingest_record_offset(b"record_data")
+    ...     print(f"Queued at offset {offset}")
+    ...
+    ...     # Batch API - returns one offset for the batch
+    ...     batch_offset = await stream.ingest_records_offset([b"record1", b"record2"])
+    ...
+    ...     # Fire-and-forget for maximum throughput
+    ...     stream.ingest_record_nowait(b"record_data")  # Not awaited!
+    ...     stream.ingest_records_nowait([b"record1", b"record2"])  # Not awaited!
+    ...
+    ...     await stream.flush()  # Ensure all records are sent
+    ...     await stream.close()
+    >>>
+    >>> asyncio.run(main())
+"""
 
-logger = logging.getLogger("zerobus_sdk")
+from typing import Any
 
-# Default timeout in milliseconds for stream operations, used when recovery is not enabled.
-CREATE_STREAM_TIMEOUT_MS = 15000
+# Import Rust-backed implementations
+import zerobus._zerobus_core as _core
+
+# Import base Rust stream class
+_RustZerobusStream = _core.aio.ZerobusStream
 
 
 class ZerobusStream:
     """
-    Manages a single, stateful gRPC stream for ingesting records asynchronously.
+    Python wrapper around Rust ZerobusStream that provides optimized ingest_record.
 
-    This class uses asyncio to handle the complexities of a bi-directional streaming
-    RPC, including sending records, receiving acknowledgments, managing in-flight
-    record limits, and automatic recovery from transient network errors.
+    This wrapper implements a two-stage await pattern for ingest_record:
+    1. First await: Submits record quickly and returns a future
+    2. Second await: Waits for acknowledgment
 
-    Args:
-        stub (zerobus_service_pb2_grpc.ZerobusStub): The async gRPC stub for the service.
-        headers_provider (HeadersProvider): Provider for headers.
-        table_properties (TableProperties): The properties of the target table.
-        options (StreamConfigurationOptions): Configuration options for the stream.
+    This allows batching submissions without blocking on acknowledgments.
     """
 
-    def __init__(
-        self,
-        stub: zerobus_service_pb2_grpc.ZerobusStub,
-        headers_provider: HeadersProvider,
-        table_properties: TableProperties,
-        options: StreamConfigurationOptions,
-        tls_config: TlsConfig,
-    ):
-        self.__stub = stub
-        self._headers_provider = headers_provider
-        self._table_properties = table_properties
-        self._options = options
-        self._tls_config = tls_config
-        self.__record_queue = asyncio.Queue(maxsize=0)
-        self.__inflight_records_tokens = asyncio.Queue(maxsize=self._options.max_inflight_records)
-        self.__inflight_records_done = asyncio.Condition()
-        self.__pending_futures = OrderedDict()
-        self.__unacked_records = list()
-        self.__last_received_offset = None
-        self.stream_id = None
-        self.__state = StreamState.UNINITIALIZED
-        self.__state_changed = asyncio.Condition()
-        self.__receiver_task = None
-        self.__sender_running = False
-        self.__sender_status = asyncio.Condition()
-        self.__error_handling_in_progress = False
-        self.__server_unresponsiveness_detection_task = None
-        self.__stream_failure_info = _StreamFailureInfo()
+    def __init__(self, rust_stream: _RustZerobusStream):
+        self._inner = rust_stream
 
-    async def __set_state(self, new_state: StreamState):
-        async with self.__state_changed:
-            self.__state = new_state
-            self.__state_changed.notify_all()
-
-    async def __with_retries(self, func: Callable, max_attempts: int):
-        timeout_seconds = (
-            (self._options.recovery_timeout_ms / 1000) if self._options.recovery else (CREATE_STREAM_TIMEOUT_MS / 1000)
-        )
-        backoff_seconds = (self._options.recovery_backoff_ms / 1000) if self._options.recovery else 0
-
-        for attempt in range(max_attempts):
-            logger.info(f"Attempting retry {attempt} out of {max_attempts}")
-            try:
-                try:
-                    await asyncio.wait_for(func(), timeout=timeout_seconds)
-                    break
-                except asyncio.TimeoutError:
-                    # We add from None to suppress the stack trace generated by asyncio
-                    # (a lot of timeout and cancelled errors)
-                    # This makes the exception trace much cleaner when shown to the user
-                    raise Exception("Stream operation timed out...") from None
-            except NonRetriableException as e:
-                raise e
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                if attempt == max_attempts - 1:
-                    raise e  # Re-raise last exception if all attempts fail
-                await asyncio.sleep(backoff_seconds)
-
-    # Define callable for stream creation
-    async def __create_stream(self):
-        headers = self._headers_provider.get_headers()
-
-        # Stream already opened
-        if self.__state == StreamState.OPENED:
-            return
-
-        # Stream closed/failed
-        if self.__state == StreamState.CLOSED or self.__state == StreamState.FAILED:
-            raise ZerobusException("Stream already closed and cannot be reused.")
-
-        # UNINITIALIZED or RECOVERING
-        self.__last_received_offset = None
-        self.stream_id = None
-        self._stream = None
-        self.__receiver_task = None
-
-        try:
-            self._stream = self.__stub.EphemeralStream(self.__sender(), metadata=headers)
-
-            success = False
-            async for response in self._stream:
-                if response.HasField("create_stream_response"):
-                    self.stream_id = response.create_stream_response.stream_id
-                    success = True
-
-                break
-
-            if not success:
-                logger.error("No response received from the server on stream creation")
-                raise ZerobusException("No response received from the server on stream creation")
-
-            self.__receiver_task = asyncio.create_task(self.__receiver())
-            self.__server_unresponsiveness_detection_task = asyncio.create_task(
-                self.__server_unresponsiveness_detection()
-            )
-
-            logger.info(f"Stream created. Stream ID: {self.stream_id}")
-
-        except grpc.RpcError as e:
-            if e.code() in NOT_RETRIABLE_GRPC_CODES:
-                # Non-retriable gRPC errors
-                logger.error(f"Non-retriable gRPC error during stream creation: {str(e)}")
-                raise NonRetriableException(f"Failed to create a stream: {str(e)}") from e
-            else:
-                # Retriable gRPC errors
-                logger.error(f"Retriable gRPC error during stream creation: {str(e)}")
-                raise ZerobusException(f"Failed to create a stream: {str(e)}") from e
-        except Exception as e:
-            logger.error(f"Create stream error: {str(e)}")
-            raise ZerobusException(f"Failed to create a stream: {str(e)}") from e
-
-    async def _initialize(self):
-        # Asynchronous initialization method for ZerobusStream. Must be called before using the stream.
-        try:
-            logger.info("Starting initializing stream")
-            max_attempts = self._options.recovery_retries if self._options.recovery else 1
-            await self.__with_retries(self.__create_stream, max_attempts)
-            await self.__set_state(StreamState.OPENED)
-        except ZerobusException:
-            await self.__set_state(StreamState.FAILED)
-            raise
-        except Exception as e:
-            await self.__set_state(StreamState.FAILED)
-            raise ZerobusException(f"Failed to create a stream: {str(e)}") from e
-
-    async def __close(self, hard_failure, err_msg=""):
-        try:
-            if self.__server_unresponsiveness_detection_task is not None:
-                self.__server_unresponsiveness_detection_task.cancel()
-                await self.__server_unresponsiveness_detection_task
-        except:  # noqa: E722
-            pass
-        finally:
-            self.__server_unresponsiveness_detection_task = None
-
-        try:
-            if self._stream is not None:
-                self._stream.cancel()
-        except:  # noqa: E722
-            pass
-
-        async with self.__sender_status:
-            if self.__sender_running:
-                await self.__sender_status.wait_for(lambda: not self.__sender_running)
-
-        try:
-            if self.__receiver_task is not None:
-                self.__receiver_task.cancel()
-                await self.__receiver_task
-        except:  # noqa: E722
-            pass
-        finally:
-            self.__receiver_task = None
-
-        # Save all unacked records that are sent but not acknowledged
-        if hard_failure:
-            for future, record, _ in self.__pending_futures.values():
-                if future is not None and future.done():
-                    continue
-
-                self.__unacked_records.append((record, future))
-                if future is not None:
-                    future.set_exception(ZerobusException(err_msg))
-                    future.exception()  # this is to avoid too many logs that future is not handled
-
-            self.__pending_futures.clear()
-
-            # Save all unacked records that are not even sent
-            async with self.__inflight_records_done:
-                while not self.__record_queue.empty():
-                    future, record, _ = self.__record_queue.get_nowait()
-                    self.__unacked_records.append((record, future))
-                    if future is not None:
-                        future.set_exception(ZerobusException(err_msg))
-                        future.exception()  # this is to avoid too many logs that future is not handled
-
-                while not self.__inflight_records_tokens.empty():
-                    self.__inflight_records_tokens.get_nowait()
-                self.__inflight_records_done.notify_all()
-
-    async def __recover_stream(self) -> bool:
-        if not self._options.recovery:
-            # recovery is disabled
-            return False
-
-        left_retries = max(0, self._options.recovery_retries - self.__stream_failure_info.failure_counts + 1)
-        if left_retries == 0:
-            # we've tried to recover the stream too many times, so we give up
-            return False
-
-        try:
-            logger.info("Recovering stream...")
-
-            await self.__close(hard_failure=False)
-            await self.__with_retries(self.__create_stream, left_retries)
-            await self.__set_state(StreamState.OPENED)
-
-            logger.info("Stream recovered successfully")
-        except Exception as e:
-            logger.error(f"Failed to recover stream: {str(e)}")
-            return False
-
-        return True
-
-    async def __handle_stream_failed(
-        self, failed_stream_id, failure_type: _StreamFailureType, exception: Exception = None
-    ):
-        if self.__error_handling_in_progress:
-            # Error handling is already in progress, so we don't need to handle it again
-            return
-
-        if failed_stream_id != self.stream_id:
-            # Stream was reset in the meantime, so we will repeat ingesting the record
-            return
-
-        try:
-            self.__error_handling_in_progress = True
-
-            # RECOVERING -> Something else is already taking care of the failure
-            # FAILED -> Stream's failure is already processed'
-            # UNINITIALIZED -> Stream is not opened - means that the stream was not created yet
-            if (
-                self.__state == StreamState.RECOVERING
-                or self.__state == StreamState.FAILED
-                or self.__state == StreamState.UNINITIALIZED
-            ):
-                return
-
-            if self.__state == StreamState.CLOSED and (
-                exception is None or isinstance(exception, asyncio.CancelledError)
-            ):
-                # Stream failed after closed, but without exception - that's expected (stream closed gracefully)
-                return
-
-            err_msg = str(exception) if exception is not None else "Stream closed unexpectedly!"
-            self.__stream_failure_info.log_failure(failure_type)
-
-            should_recover = (
-                (self.__state == StreamState.OPENED or self.__state == StreamState.FLUSHING)
-                and not isinstance(exception, NonRetriableException)
-                and self._options.recovery
-            )
-
-            if should_recover:
-                # Set the state to recovering
-                # This is to prevent the stream from being closed multiple times
-                self.__state = StreamState.RECOVERING
-                recovered = await self.__recover_stream()
-                if recovered:
-                    # Stream recovered successfully
-                    return
-                # Recovery failed
-                logger.error(f"Stream failed permanently after failed recovery attempt: {err_msg}")
-            else:
-                # Non-recoverable error
-                logger.error(f"Stream closed due to a non-recoverable error: {err_msg}")
-
-            # Close the stream for new events
-            await self.__set_state(StreamState.FAILED)
-            await self.__close(hard_failure=True, err_msg=err_msg)
-        finally:
-            self.__error_handling_in_progress = False
-
-    async def __wait_for_stream_to_finish_initialization(self):
-        async with self.__state_changed:
-            if self.__state == StreamState.UNINITIALIZED or self.__state == StreamState.RECOVERING:
-                await self.__state_changed.wait_for(
-                    lambda: self.__state != StreamState.UNINITIALIZED and self.__state != StreamState.RECOVERING
-                )
-
-    async def __next_record(self):
-        try:
-            return await asyncio.wait_for(self.__record_queue.get(), timeout=1.0)
-        except asyncio.TimeoutError:
-            return (None, None, None)
-
-    async def __sender(self):
-        self.__sender_running = True
-        exception = None
-        offset_id = -1
-        stream_id = None
-        record_ack_received_future, record = (None, None)
-
-        try:
-            # 1. CREATE STREAM
-            logger.info("Sending CreateIngestStreamRequest to gRPC stream")
-            create_stream_request = zerobus_service_pb2.CreateIngestStreamRequest(
-                table_name=self._table_properties.table_name.encode("utf-8"),
-                record_type=self._options.record_type.value,
-            )
-
-            # Only include descriptor for PROTO streams
-            if self._options.record_type == RecordType.PROTO:
-                create_stream_request.descriptor_proto = self._get_descriptor_bytes(
-                    self._table_properties.descriptor_proto
-                )
-
-            yield zerobus_service_pb2.EphemeralStreamRequest(create_stream=create_stream_request)
-            logger.info("Waiting for CreateIngestStreamResponse")
-            await self.__wait_for_stream_to_finish_initialization()
-            stream_id = self.stream_id
-
-            if self.__state == StreamState.FAILED or self.__state == StreamState.UNINITIALIZED:
-                return
-
-            # 2. RETRY UNACKED RECORDS
-            try:
-                # First resend all the records that are sent but not acknowledged
-                # this is triggered after recovery, for pending acks records
-                # (for fresh new streams, this is a no-op)
-
-                unacked_offset_ids = list(self.__pending_futures.keys())
-                for old_offset_id in unacked_offset_ids:
-                    record_ack_received_future, sent_record, serialized_record = self.__pending_futures.get(
-                        old_offset_id
-                    )
-
-                    offset_id += 1
-
-                    if offset_id != old_offset_id:
-                        self.__pending_futures[offset_id] = (
-                            record_ack_received_future,
-                            sent_record,
-                            serialized_record,
-                        )
-                        self.__pending_futures.pop(old_offset_id)
-
-                    ingest_request = zerobus_service_pb2.IngestRecordRequest(offset_id=offset_id)
-                    if self._options.record_type == RecordType.PROTO:
-                        ingest_request.proto_encoded_record = serialized_record
-                    elif self._options.record_type == RecordType.JSON:
-                        ingest_request.json_record = serialized_record.decode("utf-8")
-
-                    yield zerobus_service_pb2.EphemeralStreamRequest(ingest_record=ingest_request)
-
-            except Exception as e:
-                raise ZerobusException("Failed to resend unacked records after stream recovery: " + str(e))
-
-            offset_id += 1
-
-            # 3. SENDING NEW RECORDS
-            while (
-                self.__state == StreamState.OPENED
-                or self.__state == StreamState.FLUSHING
-                or not self.__record_queue.empty()
-            ):
-                if offset_id > 0:
-                    self.__stream_failure_info.reset_failure(_StreamFailureType.SENDER_ERROR)
-
-                # Failed -> return from the generator, stream is closed
-                # Recovering -> new sender generator will be created
-                if self.__state == StreamState.FAILED or self.__state == StreamState.RECOVERING:
-                    return
-
-                record_ack_received_future, record, serialized_record = await self.__next_record()
-
-                if record is None:
-                    continue
-
-                self.__pending_futures[offset_id] = (
-                    record_ack_received_future,
-                    record,
-                    serialized_record,
-                )
-                # Failed -> return from the generator, stream is closed
-                # Recovering -> new sender generator will be created
-                if self.__state == StreamState.FAILED or self.__state == StreamState.RECOVERING:
-                    # We shouldn't loose the record
-                    return
-
-                ingest_request = zerobus_service_pb2.IngestRecordRequest(offset_id=offset_id)
-                if self._options.record_type == RecordType.PROTO:
-                    ingest_request.proto_encoded_record = serialized_record
-                elif self._options.record_type == RecordType.JSON:
-                    ingest_request.json_record = serialized_record.decode("utf-8")
-
-                yield zerobus_service_pb2.EphemeralStreamRequest(ingest_record=ingest_request)
-
-                offset_id += 1
-
-            # If stream state is closed, wait for all records to be sent before closing the underlying grpc (graceful close)
-            # Not waiting here would close the underlying grpc stream, so we need to wait until all pending futures were received from the server
-            # If pending futures cannot be received, server unresponsiveness task will clean it up.
-            while self.__state == StreamState.CLOSED and len(self.__pending_futures) > 0:
-                await self.__next_record()
-
-        except asyncio.CancelledError as e:
-            exception = e
-        except grpc.RpcError as e:
-            # Check if this is a CANCELLED error due to intentional stream closure
-            if self.__state == StreamState.CLOSED and e.code() == grpc.StatusCode.CANCELLED:
-                # Stream was cancelled during close() - don't log as error
-                exception = ZerobusException(f"Error happened in sending records: {e}")
-            else:
-                exception = log_and_get_exception(e)
-        except Exception as e:
-            logger.error(f"Error happened in sending records: {str(e)}")
-            exception = ZerobusException(f"Error happened in sending records: {str(e)}")
-        except GeneratorExit:
-            exception = ZerobusException("Stream cancelled")
-        finally:
-            async with self.__sender_status:
-                self.__sender_running = False
-                self.__sender_status.notify_all()
-
-            asyncio.create_task(self.__handle_stream_failed(stream_id, _StreamFailureType.SENDER_ERROR, exception))
-
-    async def __receiver(self):
-        exception = None
-
-        try:
-            await self.__wait_for_stream_to_finish_initialization()
-
-            if self.__state != StreamState.OPENED and self.__state != StreamState.FLUSHING:
-                return
-
-            async for response in self._stream:
-                if response.HasField("ingest_record_response"):
-                    response = response.ingest_record_response
-                elif response.HasField("close_stream_signal"):
-                    close_stream_duration = response.close_stream_signal.duration.seconds
-                    logger.info(f"Stream will be gracefully closed by server in {close_stream_duration} seconds.")
-                    if self._options.recovery:
-                        # If recovery is enabled, immediately start recovery process
-                        return
-                    else:
-                        # If not, keep stream opened until server sends an error
-                        continue
-                else:
-                    raise ZerobusException("Unexpected response type received. Expected IngestRecordResponse.")
-
-                first_offset_in_ack = 0 if self.__last_received_offset is None else self.__last_received_offset + 1
-                for offset_to_ack in range(first_offset_in_ack, response.durability_ack_up_to_offset + 1):
-                    future, _, _ = self.__pending_futures.get(offset_to_ack, (None, None, None))
-                    if future is not None:
-                        future.set_result(offset_to_ack)
-                    self.__pending_futures.pop(offset_to_ack, (None, None, None))
-
-                    async with self.__inflight_records_done:
-                        if not self.__inflight_records_tokens.empty():
-                            await self.__inflight_records_tokens.get()
-                            self.__inflight_records_done.notify_all()
-
-                self.__last_received_offset = response.durability_ack_up_to_offset
-                if self._options.ack_callback:
-                    self._options.ack_callback(response)
-
-                if self.__last_received_offset > 0:
-                    self.__stream_failure_info.reset_failure(_StreamFailureType.RECEIVER_ERROR)
-                    self.__stream_failure_info.reset_failure(_StreamFailureType.SERVER_UNRESPONSIVE)
-
-                # For gracefully closed streams, we need to wait all acks to be received
-                if (
-                    self.__state != StreamState.OPENED
-                    and self.__state != StreamState.FLUSHING
-                    and len(self.__pending_futures) == 0
-                    and self.__record_queue.empty()
-                ):
-                    break
-        except asyncio.CancelledError as e:
-            exception = e
-        except grpc.RpcError as e:
-            # Check if this is a CANCELLED error due to intentional stream closure
-            if self.__state == StreamState.CLOSED and e.code() == grpc.StatusCode.CANCELLED:
-                # Stream was cancelled during close() - don't log as error
-                exception = ZerobusException(f"Error happened in receiving records: {e}")
-            else:
-                exception = log_and_get_exception(e)
-        except Exception as e:
-            logger.error(f"Error happened in receiving records: {str(e)}")
-            exception = ZerobusException(f"Error happened in receiving records: {str(e)}")
-        finally:
-            self.__receiver_task = None
-            asyncio.create_task(
-                self.__handle_stream_failed(self.stream_id, _StreamFailureType.RECEIVER_ERROR, exception)
-            )
-
-    async def __server_unresponsiveness_detection(self):
-        exception = None
-
-        try:
-            await self.__wait_for_stream_to_finish_initialization()
-
-            while self.__state == StreamState.OPENED or self.__state == StreamState.FLUSHING:
-                last_received_offset = self.__last_received_offset
-
-                async with self.__inflight_records_done:
-                    # wait for inflight records to not be empty
-                    if self.__inflight_records_tokens.empty():
-                        await self.__inflight_records_done.wait_for(lambda: not self.__inflight_records_tokens.empty())
-
-                await asyncio.sleep(self._options.server_lack_of_ack_timeout_ms / 1000)
-
-                if last_received_offset == self.__last_received_offset:
-                    raise ZerobusException("Server is unresponsive. Stream failed.")
-
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.error(e)
-            exception = e
-
-        if exception is not None:
-            self.__server_unresponsiveness_detection_task = None
-            asyncio.create_task(
-                self.__handle_stream_failed(self.stream_id, _StreamFailureType.SERVER_UNRESPONSIVE, exception)
-            )
-
-    def get_state(self) -> StreamState:
+    async def ingest_record(self, payload: Any):
         """
-        Returns the current operational state of the stream.
+        Ingest a single record and return a future for acknowledgment.
 
-        Returns:
-            StreamState: The current state as a StreamState enum member.
-        """
-        return self.__state
+        This method uses a two-stage await pattern for optimal performance:
+        - First await (this method): Submits the record and returns quickly with a future
+        - Second await (the returned future): Waits for server acknowledgment
 
-    def get_unacked_records(self) -> Iterator:
-        """
-        Retrieves records that were not acknowledged before the stream failed or was closed.
+        Example:
+            # Fast submission - queue all records quickly
+            futures = []
+            for record in records:
+                future = await stream.ingest_record(record)  # Returns quickly!
+                futures.append(future)
 
-        Returns:
-            Iterator: An iterator yielding the unacknowledged records.
-        """
-        return (record[0] for record in self.__unacked_records)
-
-    async def ingest_record(self, record: Union[Message, dict, bytes, str]) -> asyncio.Future:
-        """
-        Asynchronously submits a single record for ingestion into the stream.
-
-        This coroutine will await if the maximum number of in-flight records has been
-        reached, pausing until there is capacity.
+            # Wait for all acknowledgments concurrently
+            await asyncio.gather(*futures)
 
         Args:
-            record: The record to ingest. Accepts:
-                   - For PROTO mode: Protobuf Message object (high-level) or bytes (pre-serialized)
-                   - For JSON mode: dict (high-level) or str (pre-serialized JSON string)
-                   Type must match the stream's configured record_type.
+            payload: Record data (bytes, str, dict, or protobuf Message)
 
         Returns:
-            asyncio.Future: A future that will be completed with the server's acknowledgment.
-                The caller can await this future to confirm receipt.
-
-        Raises:
-            ValueError: If record type doesn't match stream configuration.
-            ZerobusException: If the stream is not in a valid state for ingestion.
+            An awaitable future that, when awaited, waits for acknowledgment and returns the offset
         """
-        # Validate record type and serialize appropriately
-        if self._options.record_type == RecordType.PROTO:
-            if isinstance(record, Message):
-                serialized_record = record.SerializeToString()
-            elif isinstance(record, bytes):
-                serialized_record = record
-            else:
-                raise ValueError(
-                    f"Stream is configured for PROTO records, but received {type(record).__name__}. "
-                    "Pass a Protobuf Message object or bytes."
-                )
+        # Stage 1: Submit record and get offset (fast!)
+        offset = await self._inner.ingest_record_offset(payload)
 
-        elif self._options.record_type == RecordType.JSON:
-            if isinstance(record, dict):
-                try:
-                    serialized_record = json.dumps(record).encode("utf-8")
-                except (TypeError, ValueError) as e:
-                    raise NonRetriableException(
-                        f"Failed to serialize record to JSON: {e}. "
-                        "Ensure all values in the dict are JSON-serializable "
-                        "(str, int, float, bool, None, list, or dict)."
-                    ) from e
-            elif isinstance(record, str):
-                serialized_record = record.encode("utf-8")
-            else:
-                raise ValueError(
-                    f"Stream is configured for JSON records, but received {type(record).__name__}. "
-                    "Pass a dict or str object."
-                )
+        # Stage 2: Return a lazy coroutine that only starts waiting when awaited
+        async def wait_for_ack():
+            await self._inner.wait_for_offset(offset)
+            return offset
 
-        else:
-            raise ValueError(f"Unsupported record type: {self._options.record_type}")
+        return wait_for_ack()
 
-        # Wait for the flush to finish
-        async with self.__state_changed:
-            if self.__state == StreamState.FLUSHING:
-                await self.__state_changed.wait_for(lambda: self.__state != StreamState.FLUSHING)
+    # Forward all other methods to the inner Rust stream
+    async def ingest_record_offset(self, payload: Any):
+        """Submit record and return offset immediately (no waiting)."""
+        return await self._inner.ingest_record_offset(payload)
 
-            # Check if the stream is closed or failed and fail ingesting if so
-            if (
-                self.__state == StreamState.CLOSED
-                or self.__state == StreamState.FAILED
-                or self.__state == StreamState.UNINITIALIZED
-            ):
-                raise ZerobusException("Cannot ingest records after stream is closed or before it's opened.")
+    def ingest_record_nowait(self, payload: Any):
+        """Submit record without waiting (fire-and-forget)."""
+        return self._inner.ingest_record_nowait(payload)
 
-        record_ack_received_future = asyncio.get_running_loop().create_future()
+    async def ingest_records_offset(self, payloads):
+        """Submit batch of records and return final offset."""
+        return await self._inner.ingest_records_offset(payloads)
 
-        async with self.__inflight_records_done:
-            if self.__inflight_records_tokens.full():
-                await self.__inflight_records_done.wait_for(lambda: not self.__inflight_records_tokens.full())
+    def ingest_records_nowait(self, payloads):
+        """Submit batch of records without waiting."""
+        return self._inner.ingest_records_nowait(payloads)
 
-            if self.__state != StreamState.OPENED and self.__state != StreamState.RECOVERING:
-                raise ZerobusException("Cannot ingest records after stream is closed or before it's opened.")
-            await self.__inflight_records_tokens.put(None)
-            await self.__record_queue.put((record_ack_received_future, record, serialized_record))
-
-        await asyncio.sleep(0)
-        return record_ack_received_future
-
-    async def __wait_all_records_to_be_flushed(self):
-        try:
-            async with self.__state_changed:
-                if self.__state == StreamState.OPENED:
-                    self.__state = StreamState.FLUSHING
-
-            async with self.__inflight_records_done:
-                await asyncio.wait_for(
-                    self.__inflight_records_done.wait_for(lambda: self.__inflight_records_tokens.empty()),
-                    timeout=self._options.flush_timeout_ms / 1000,
-                )
-
-        except asyncio.TimeoutError:
-            logger.error("Flush timed out ...")
-            # We add from None to suppress the stack trace generated by asyncio (a lot of timeout and cancelled errors)
-            # This makes the exception trace much cleaner when shown to the user
-            raise ZerobusException("Flush timed out ...") from None
-        finally:
-            async with self.__state_changed:
-                if self.__state == StreamState.FLUSHING:
-                    self.__state = StreamState.OPENED
-                    self.__state_changed.notify_all()
+    async def wait_for_offset(self, offset: int):
+        """Wait for a specific offset to be acknowledged."""
+        return await self._inner.wait_for_offset(offset)
 
     async def flush(self):
-        """
-        Asynchronously waits until all currently submitted records have been acknowledged.
-
-        This is a coroutine and should be awaited.
-
-        Raises:
-            IngestApiException: If the stream is not initialized or fails during the flush.
-        """
-
-        if self.__state == StreamState.UNINITIALIZED:
-            raise ZerobusException("Stream is not initialized. Cannot flush.")
-
-        async with self.__state_changed:
-            if self.__state == StreamState.RECOVERING:
-                await self.__state_changed.wait_for(lambda: self.__state != StreamState.RECOVERING)
-
-        await self.__wait_all_records_to_be_flushed()
-
-        if self.__state == StreamState.FAILED:
-            raise ZerobusException("Stream failed with unacknowledged records. Cannot flush.")
-
-        logger.info("Flush completed successfully")
+        """Flush all pending records."""
+        return await self._inner.flush()
 
     async def close(self):
+        """Close the stream."""
+        return await self._inner.close()
+
+    async def get_unacked_records(self):
         """
-        Gracefully closes the stream after flushing all pending records.
+        Get iterator of unacknowledged records.
 
-        This is a coroutine that waits for all submitted records to be
-        acknowledged by the server before shutting down the connection and background tasks.
-
-        Raises:
-            IngestApiException: If the stream is not in a valid state to be closed.
+        Returns:
+            Iterator[bytes]: Iterator yielding record payloads that have been ingested but not yet acknowledged.
         """
-        if self.__state == StreamState.UNINITIALIZED:
-            raise ZerobusException("Stream is not initialized. Cannot close.")
+        records = await self._inner.get_unacked_records()
+        return iter(records)
 
-        # Waiting for recovering/flushing to finish (either failed or recovered)
-        async with self.__state_changed:
-            if self.__state == StreamState.RECOVERING or self.__state == StreamState.FLUSHING:
-                await self.__state_changed.wait_for(
-                    lambda: (self.__state != StreamState.FLUSHING and self.__state != StreamState.RECOVERING)
-                )
-
-            if self.__state == StreamState.CLOSED:
-                return
-
-            if self.__state == StreamState.FAILED:
-                raise ZerobusException("Stream failed. Cannot close.")
-
-            logger.info("Closing the stream gracefully...")
-            self.__state = StreamState.CLOSED
-            self.__state_changed.notify_all()
-
-        try:
-            await self.flush()
-        finally:
-            await self.__close(hard_failure=True)
-
-        logger.info("Stream closed successfully")
-
-    @staticmethod
-    def _get_descriptor_bytes(descriptor):
+    async def get_unacked_batches(self):
         """
-        Private method for getting descriptor bytes.
-        """
-        descriptor_proto = DescriptorProto()
-        descriptor.CopyToProto(descriptor_proto)
+        Get iterator of unacknowledged batches.
 
-        serialized_descriptor = descriptor_proto.SerializeToString()
-        return serialized_descriptor
+        Returns:
+            Iterator[List[bytes]]: Iterator yielding batches, where each batch is a list of record payloads.
+        """
+        batches = await self._inner.get_unacked_batches()
+        return iter(batches)
+
+    @property
+    def stream_id(self):
+        """Get the stream ID (placeholder)."""
+        return "stream-placeholder-id"
+
+    def get_state(self):
+        """Get the current stream state (placeholder)."""
+        return 1  # OPENED state
 
 
 class ZerobusSdk:
-    """
-    This class serves as the main entry point for interacting with the Zerobus service
-    asynchronously, handling gRPC channel setup and stream creation.
-
-    Args:
-        host (str): The hostname or IP address of the Zerobus service.
-        unity_catalog_url (str): The URL of the Unity Catalog endpoint.
-    """
+    """Python wrapper around Rust ZerobusSdk that returns wrapped streams."""
 
     def __init__(self, host: str, unity_catalog_url: str):
+        self._inner = _core.aio.ZerobusSdk(host, unity_catalog_url)
+
+    async def set_use_tls(self, use_tls: bool):
         """
-        Initialize ZerobusSdk with standard OAuth authentication.
+        Set whether to use TLS for connections.
 
         Args:
-            host: The hostname or IP address of the Zerobus service.
-            unity_catalog_url: The URL of the Unity Catalog endpoint.
+            use_tls: Whether to use TLS (default: True). Set to False for testing with local mock servers.
         """
-        self.__host = host
-        self.__unity_catalog_url = unity_catalog_url
-        self.__workspace_id = host.split(".")[0]
+        await self._inner.set_use_tls(use_tls)
 
     async def create_stream(
-        self,
-        client_id: str,
-        client_secret: str,
-        table_properties: TableProperties,
-        options: StreamConfigurationOptions = StreamConfigurationOptions(),
-        tls_config: Optional[TlsConfig] = None,
-        headers_provider: Optional[HeadersProvider] = None,
-    ) -> ZerobusStream:
+        self, client_id: str, client_secret: str, table_properties, options=None, headers_provider=None
+    ):
         """
-        Asynchronously creates, initializes, and returns a new ingestion stream.
-
-        This is a coroutine and must be awaited.
+        Create a stream with OAuth authentication or custom headers provider.
 
         Args:
-            client_id (str): The client ID (ignored if headers_provider is provided).
-            client_secret (str): The client secret (ignored if headers_provider is provided).
-            table_properties (TableProperties): The properties of the target table,
-                including its name and schema.
-            options (StreamConfigurationOptions): Optional configuration for the stream's
-                behavior, such as recovery settings.
-            tls_config (Optional[TlsConfig]): Optional TLS configuration. If not provided,
-                uses SecureTlsConfig (TLS with system CAs).
-            headers_provider (Optional[HeadersProvider]): Optional custom headers provider
-                for authentication. If not provided, uses OAuth with client_id and client_secret.
-
-        Returns:
-            ZerobusStream: An initialized and active stream instance.
-
-        Raises:
-            ValueError: If record_type is PROTO but descriptor_proto is not provided.
+            client_id: OAuth client ID
+            client_secret: OAuth client secret
+            table_properties: Table configuration
+            options: Optional stream configuration
+            headers_provider: Optional custom headers provider (if set, overrides OAuth)
         """
-        # Validate record_type and descriptor compatibility
-        if options.record_type == RecordType.PROTO:
-            if table_properties.descriptor_proto is None:
-                raise ValueError("descriptor_proto is required in TableProperties when record_type is PROTO")
-        elif options.record_type == RecordType.JSON:
-            if table_properties.descriptor_proto is not None:
-                logger.warning("descriptor_proto provided for JSON stream will be ignored")
-
-        # Use provided headers_provider or create OAuth provider
-        if headers_provider is None:
-            headers_provider = OAuthHeadersProvider(
-                self.__workspace_id, self.__unity_catalog_url, table_properties.table_name, client_id, client_secret
+        if headers_provider is not None:
+            # Use custom headers provider (ignores client_id/client_secret)
+            rust_stream = await self._inner.create_stream_with_headers_provider(
+                table_properties, headers_provider, options
             )
+        else:
+            # Use OAuth authentication
+            rust_stream = await self._inner.create_stream(client_id, client_secret, table_properties, options)
+        return ZerobusStream(rust_stream)
 
-        # Use SecureTlsConfig as default if not provided
-        if tls_config is None:
-            tls_config = SecureTlsConfig()
+    async def recreate_stream(self, old_stream: ZerobusStream):
+        """Recreate a stream from an old stream."""
+        rust_stream = await self._inner.recreate_stream(old_stream._inner)
+        return ZerobusStream(rust_stream)
 
-        # Get channel credentials from TLS configuration
-        channel_credentials = tls_config.to_channel_credentials()
 
-        channel = grpc.aio.secure_channel(
-            self.__host,
-            channel_credentials,
-            options=[("grpc.max_send_message_length", -1), ("grpc.max_receive_message_length", -1)],
-        )
-        stub = zerobus_service_pb2_grpc.ZerobusStub(channel)
-        stream = ZerobusStream(
-            stub,
-            headers_provider,
-            table_properties,
-            options,
-            tls_config,
-        )
-        await stream._initialize()
-        return stream
+# Re-export common types for convenience
+HeadersProvider = _core.HeadersProvider
+RecordType = _core.RecordType
+StreamConfigurationOptions = _core.StreamConfigurationOptions
+TableProperties = _core.TableProperties
+AckCallback = _core.AckCallback
+ZerobusException = _core.ZerobusException
+NonRetriableException = _core.NonRetriableException
 
-    async def recreate_stream(self, old_stream: ZerobusStream) -> ZerobusStream:
-        """
-        Asynchronously creates a new stream to replace a failed or closed stream.
-
-        This coroutine automatically re-ingests any records that were not acknowledged
-        by the previous stream.
-
-        Args:
-            old_stream (ZerobusStream): The failed or closed stream instance.
-
-        Returns:
-            ZerobusStream: A new, active stream with unacknowledged records re-queued.
-
-        Raises:
-            ZerobusException: If the provided old stream is still active.
-        """
-        old_stream_state = old_stream.get_state()
-        if old_stream_state != StreamState.CLOSED and old_stream_state != StreamState.FAILED:
-            raise ZerobusException("Stream is not closed. Cannot create new stream.")
-
-        new_stream = await self.create_stream(
-            "",
-            "",
-            old_stream._table_properties,
-            old_stream._options,
-            old_stream._tls_config,
-            old_stream._headers_provider,
-        )
-
-        # Loop over unacked records and ingest them into the new stream
-        unacked_records = old_stream.get_unacked_records()
-        for record in unacked_records:
-            await new_stream.ingest_record(record)
-
-        return new_stream
+__all__ = [
+    "ZerobusSdk",
+    "ZerobusStream",
+    "TableProperties",
+    "StreamConfigurationOptions",
+    "RecordType",
+    "AckCallback",
+    "HeadersProvider",
+    "ZerobusException",
+    "NonRetriableException",
+]

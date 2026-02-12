@@ -20,11 +20,17 @@ Small patches and bug fixes don't need prior communication.
 
 ### Prerequisites
 
-- Python 3.9 or higher
-- Git
-- pip
+- **Python 3.9 or higher**
+- **Git**
+- **Rust toolchain** (required for building the native extension)
+  - Install from [rustup.rs](https://rustup.rs/)
+  - Verify: `rustc --version`
+- **maturin** (for building Rust-Python bindings)
+  - Install: `pip install maturin`
 
 ### Setting Up Your Development Environment
+
+Since v0.3.0, the SDK uses a Rust core with Python bindings built via [maturin](https://github.com/PyO3/maturin) and [PyO3](https://pyo3.rs/).
 
 1. **Clone the repository:**
    ```bash
@@ -40,11 +46,28 @@ Small patches and bug fixes don't need prior communication.
    This will:
    - Create a virtual environment in `.venv`
    - Install the package in development mode with all dev dependencies
+   - **Note**: This uses `pip install -e .` which builds the Rust extension automatically
 
 3. **Activate the virtual environment:**
    ```bash
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
    ```
+
+### Building the Rust Extension
+
+The SDK's core is implemented in Rust. There are two ways to build it:
+
+**Option 1: Development Mode (Recommended for active development)**
+```bash
+make develop-rust
+```
+This compiles the Rust code in debug mode and installs it directly into your virtual environment. **After modifying Rust code, re-run this command to rebuild.**
+
+**Option 2: Release Mode (For benchmarking or distribution)**
+```bash
+make build-rust
+```
+This creates an optimized wheel in `target/wheels/`. Use this for performance testing or creating release builds.
 
 ## Coding Style
 
@@ -223,17 +246,45 @@ You can view CI results in the GitHub Actions tab of the pull request.
 
 ## Makefile Targets
 
-Available make targets:
+### Python Targets
 
-- `make dev` - Set up development environment
+- `make dev` - Set up development environment (creates venv, installs deps, builds Rust extension)
 - `make install` - Install package in editable mode
-- `make build` - Build wheel package (use `PYTHON=python3.X` to specify version)
+- `make build` - Build wheel package using maturin (use `PYTHON=python3.X` to specify version)
 - `make install-wheel` - Install the built wheel
 - `make fmt` - Format code with black, autoflake, and isort
 - `make lint` - Run linting with pycodestyle and autoflake
 - `make test` - Run unit tests with pytest and generate coverage reports
-- `make clean` - Remove build artifacts
-- `make help` - Show available targets
+- `make clean` - Remove build artifacts (Python and Rust)
+- `make help` - Show all available targets
+
+### Rust Targets (v0.3.0+)
+
+- `make build-rust` - Build Rust extension in release mode (optimized, slower compile)
+- `make develop-rust` - Build Rust extension in debug mode and install to venv (faster compile)
+- `make clean-rust` - Remove Rust build artifacts
+- `make test-rust` - Run Rust unit tests (runs `cargo test` in rust/ directory)
+
+### Common Workflows
+
+**Daily development (Python changes only):**
+```bash
+make fmt        # Format your code
+make lint       # Check for issues
+make test       # Run tests
+```
+
+**After modifying Rust code:**
+```bash
+make develop-rust   # Rebuild and install Rust extension
+make test          # Test Python bindings
+```
+
+**Creating a release build:**
+```bash
+make build-rust    # Build optimized wheel
+# Wheel will be in target/wheels/
+```
 
 ## Versioning
 

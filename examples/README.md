@@ -51,6 +51,15 @@ python examples/async_example_json.py     # JSON
 
 ## Examples Overview
 
+All examples demonstrate multiple ingestion methods:
+
+1. **`ingest_record_offset()`** - Single record with offset tracking
+2. **`ingest_records_offset()`** - Batch ingestion with offset tracking
+3. **`ingest_record_nowait()`** - Fire-and-forget single record
+4. **`ingest_records_nowait()`** - Fire-and-forget batch (highest throughput)
+
+Each example includes detailed comments explaining when to use each method and their performance characteristics.
+
 ### Serialization Formats
 
 The SDK supports two serialization formats:
@@ -68,11 +77,14 @@ record = record_pb2.AirQuality(device_name="sensor-1", temp=25, humidity=60)
 table_properties = TableProperties(TABLE_NAME, record_pb2.AirQuality.DESCRIPTOR)
 options = StreamConfigurationOptions(record_type=RecordType.PROTO)
 
-# Option 1: Pass Message object (SDK serializes)
-ack = stream.ingest_record(record)
+# Recommended: Use ingest_record_offset() for better performance
+offset = stream.ingest_record_offset(record)
+
+# Or fire-and-forget for maximum throughput
+stream.ingest_record_nowait(record)
 
 # Option 2: Pass pre-serialized bytes (client controls serialization)
-# ack = stream.ingest_record(record.SerializeToString())
+# offset = stream.ingest_record_offset(record.SerializeToString())
 ```
 
 #### JSON
@@ -88,11 +100,14 @@ record_dict = {"device_name": "sensor-1", "temp": 25, "humidity": 60}
 table_properties = TableProperties(TABLE_NAME)
 options = StreamConfigurationOptions(record_type=RecordType.JSON)
 
-# Option 1: Pass dict (SDK serializes)
-ack = stream.ingest_record(record_dict)
+# Recommended: Use ingest_record_offset() for better performance
+offset = stream.ingest_record_offset(record_dict)
+
+# Or fire-and-forget for maximum throughput
+stream.ingest_record_nowait(record_dict)
 
 # Option 2: Pass pre-serialized JSON string (client controls serialization)
-# ack = stream.ingest_record(json.dumps(record_dict))
+# offset = stream.ingest_record_offset(json.dumps(record_dict))
 ```
 
 ### Synchronous vs Asynchronous APIs
@@ -132,13 +147,27 @@ Both APIs provide the same functionality and performance. The key differences ar
 |--------|---------------------|----------------------|
 | Import | `from zerobus.sdk.sync import ZerobusSdk` | `from zerobus.sdk.aio import ZerobusSdk` |
 | Stream creation | `stream = sdk.create_stream(...)` | `stream = await sdk.create_stream(...)` |
-| Record ingestion | `ack = stream.ingest_record(record)` | `ack = await stream.ingest_record(record)` |
+| Record ingestion (with offset) | `offset = stream.ingest_record_offset(record)` | `offset = await stream.ingest_record_offset(record)` |
+| Record ingestion (fire-and-forget) | `stream.ingest_record_nowait(record)` | `stream.ingest_record_nowait(record)` |
 | Flush | `stream.flush()` | `await stream.flush()` |
 | Close | `stream.close()` | `await stream.close()` |
 | Execution context | Standard Python | Requires asyncio event loop |
 | Use case | General Python applications | Asyncio-based applications |
 
 **Performance:** Both APIs offer equivalent throughput and durability. Choose based on your application's architecture, not performance needs.
+
+**Recommended Methods:**
+
+**Single Record Ingestion:**
+- `ingest_record_offset()` - Returns offset immediately, use when you need to track offsets
+- `ingest_record_nowait()` - Fire-and-forget, best for maximum throughput
+
+**Batch Ingestion:**
+- `ingest_records_offset()` - Batch multiple records, returns final offset
+- `ingest_records_nowait()` - Fire-and-forget batch ingestion, most efficient for bulk data
+
+**Deprecated:**
+- `ingest_record()` - Use `ingest_record_offset()` instead (2-40x slower)
 
 ### Serialization Format Comparison
 
@@ -149,9 +178,9 @@ Both APIs provide the same functionality and performance. The key differences ar
 
 ## Authentication
 
-All examples use OAuth 2.0 authentication with `create_stream()`. The SDK automatically handles secure TLS connections using system CA certificates.
+All examples use OAuth 2.0 authentication with `create_stream()`. The SDK automatically handles secure TLS connections.
 
-Advanced configurations (custom headers, custom TLS) are shown in commented code within each example file.
+For advanced configurations with custom headers, see the commented examples of `CustomHeadersProvider` in each example file.
 
 ## Using Your Own Schema
 
