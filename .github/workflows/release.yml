@@ -16,25 +16,31 @@ env:
   PYTHON_VERSION: "3.9"
 
 jobs:
+  # macOS wheels via Zig cross-compilation
   macos:
-    runs-on: macos-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          architecture: x64
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - name: Build wheels - x86_64
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.13.0
+      - name: Build wheels - x86_64 (Intel)
         uses: PyO3/maturin-action@v1
         with:
-          target: x86_64
-          args: --release --out dist --sdist
-      - name: Build wheels - universal2
+          target: x86_64-apple-darwin
+          args: --release --out dist --sdist --zig
+      - name: Build wheels - aarch64 (Apple Silicon)
         uses: PyO3/maturin-action@v1
         with:
-          args: --release --universal2 --out dist
+          target: aarch64-apple-darwin
+          args: --release --out dist --zig
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -42,7 +48,9 @@ jobs:
           path: dist
 
   windows:
-    runs-on: windows-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: windows-server-latest
     strategy:
       matrix:
         target: [x64, x86]
@@ -66,7 +74,9 @@ jobs:
           path: dist
 
   linux:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
     strategy:
       matrix:
         target: [x86_64, i686]
@@ -89,7 +99,9 @@ jobs:
           path: dist
 
   linux-cross:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
     strategy:
       matrix:
         target: [aarch64, armv7]
@@ -111,7 +123,9 @@ jobs:
           path: dist
 
   musllinux:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
     strategy:
       matrix:
         target:
@@ -136,7 +150,9 @@ jobs:
           path: dist
 
   musllinux-cross:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
     strategy:
       matrix:
         platform:
@@ -163,7 +179,9 @@ jobs:
 
   release:
     name: Release to PyPI
-    runs-on: ubuntu-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
     needs:
       - macos
       - windows
