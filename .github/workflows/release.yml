@@ -38,23 +38,26 @@ jobs:
       - name: Install maturin
         run: pip install maturin
 
-      - name: Build wheels (x86_64)
+      - name: Build wheels (x86_64 - native)
         if: matrix.target == 'x86_64'
         run: |
           cd rust
           maturin build --release --out ../dist
 
-      - name: Build wheels (aarch64 cross-compile)
+      - name: Install Zig (for aarch64 cross-compile)
         if: matrix.target == 'aarch64'
         run: |
-          # Install cross-compilation toolchain
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-          rustup target add aarch64-unknown-linux-gnu
+          wget -q https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+          tar -xf zig-linux-x86_64-0.13.0.tar.xz
+          echo "$(pwd)/zig-linux-x86_64-0.13.0" >> $GITHUB_PATH
 
-          # Build
+      - name: Build wheels (aarch64 - Zig cross-compile)
+        if: matrix.target == 'aarch64'
+        run: |
+          source "$HOME/.cargo/env"
+          cargo install cargo-zigbuild
           cd rust
-          maturin build --release --target aarch64-unknown-linux-gnu --out ../dist
+          maturin build --release --target aarch64-unknown-linux-gnu --zig --out ../dist
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -118,6 +121,11 @@ jobs:
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          source "$HOME/.cargo/env"
+
+          # Add macOS targets
+          rustup target add x86_64-apple-darwin
+          rustup target add aarch64-apple-darwin
 
       - name: Install Zig
         run: |
@@ -161,9 +169,7 @@ jobs:
         run: pip install maturin
 
       - name: Build sdist
-        run: |
-          cd rust
-          maturin sdist --out ../dist
+        run: maturin sdist --manifest-path rust/Cargo.toml --out dist
 
       - name: Upload sdist
         uses: actions/upload-artifact@v4
