@@ -32,11 +32,11 @@ logger = logging.getLogger(__name__)
 
 # Configuration - update these with your values
 # For AWS:
-SERVER_ENDPOINT = os.getenv("ZEROBUS_SERVER_ENDPOINT", "your-shard-id.zerobus.region.cloud.databricks.com")
+SERVER_ENDPOINT = os.getenv("ZEROBUS_SERVER_ENDPOINT", "https://your-shard-id.zerobus.region.cloud.databricks.com")
 UNITY_CATALOG_ENDPOINT = os.getenv("DATABRICKS_WORKSPACE_URL", "https://your-workspace.cloud.databricks.com")
 # For Azure:
 # SERVER_ENDPOINT = os.getenv(
-#     "ZEROBUS_SERVER_ENDPOINT", "your-shard-id.zerobus.region.azuredatabricks.net"
+#     "ZEROBUS_SERVER_ENDPOINT", "https://your-shard-id.zerobus.region.azuredatabricks.net"
 # )
 # UNITY_CATALOG_ENDPOINT = os.getenv(
 #     "DATABRICKS_WORKSPACE_URL", "https://your-workspace.azuredatabricks.net"
@@ -99,7 +99,7 @@ def main():
         logger.info("Or update the CLIENT_ID and CLIENT_SECRET values in this file")
         return
 
-    if SERVER_ENDPOINT == "your-shard-id.zerobus.region.cloud.databricks.com":
+    if SERVER_ENDPOINT == "https://your-shard-id.zerobus.region.cloud.databricks.com":
         logger.error("Please set ZEROBUS_SERVER_ENDPOINT environment variable")
         logger.info("Or update the SERVER_ENDPOINT value in this file")
         return

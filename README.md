@@ -217,10 +217,10 @@ logging.basicConfig(
 
 # Configuration
 # For AWS:
-server_endpoint = "1234567890123456.zerobus.us-west-2.cloud.databricks.com"
+server_endpoint = "https://1234567890123456.zerobus.us-west-2.cloud.databricks.com"
 workspace_url = "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com"
 # For Azure:
-# server_endpoint = "1234567890123456.zerobus.us-west-2.azuredatabricks.net"
+# server_endpoint = "https://1234567890123456.zerobus.us-west-2.azuredatabricks.net"
 # workspace_url = "https://dbc-a1b2c3d4-e5f6.azuredatabricks.net"
 
 table_name = "main.default.air_quality"
@@ -282,7 +282,7 @@ logging.basicConfig(
 async def main():
     # Configuration
     # For AWS:
-    server_endpoint = "1234567890123456.zerobus.us-west-2.cloud.databricks.com"
+    server_endpoint = "https://1234567890123456.zerobus.us-west-2.cloud.databricks.com"
     workspace_url = "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com"
     # For Azure:
     # server_endpoint = "1234567890123456.zerobus.us-west-2.azuredatabricks.net"
@@ -421,10 +421,10 @@ logging.basicConfig(
 
 # Configuration
 # For AWS:
-server_endpoint = "1234567890123456.zerobus.us-west-2.cloud.databricks.com"
+server_endpoint = "https://1234567890123456.zerobus.us-west-2.cloud.databricks.com"
 workspace_url = "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com"
 # For Azure:
-# server_endpoint = "1234567890123456.zerobus.us-west-2.azuredatabricks.net"
+# server_endpoint = "https://1234567890123456.zerobus.us-west-2.azuredatabricks.net"
 # workspace_url = "https://dbc-a1b2c3d4-e5f6.azuredatabricks.net"
 
 table_name = "main.default.air_quality"
@@ -483,10 +483,10 @@ logging.basicConfig(
 async def main():
     # Configuration
     # For AWS:
-    server_endpoint = "1234567890123456.zerobus.us-west-2.cloud.databricks.com"
+    server_endpoint = "https://1234567890123456.zerobus.us-west-2.cloud.databricks.com"
     workspace_url = "https://dbc-a1b2c3d4-e5f6.cloud.databricks.com"
     # For Azure:
-    # server_endpoint = "1234567890123456.zerobus.us-west-2.azuredatabricks.net"
+    # server_endpoint = "https://1234567890123456.zerobus.us-west-2.azuredatabricks.net"
     # workspace_url = "https://dbc-a1b2c3d4-e5f6.azuredatabricks.net"
 
     table_name = "main.default.air_quality"

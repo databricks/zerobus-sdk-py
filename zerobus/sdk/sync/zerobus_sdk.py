@@ -9,8 +9,8 @@ Example:
     >>> from zerobus.sdk.sync import ZerobusSdk, TableProperties
     >>>
     >>> sdk = ZerobusSdk(
-    ...     host="shard.zerobus.databricks.com",
-    ...     unity_catalog_url="https://workspace.databricks.com"
+    ...     host="https://your-shard-id.zerobus.region.cloud.databricks.com",
+    ...     unity_catalog_url="https://your-workspace.cloud.databricks.com"
     ... )
     >>>
     >>> props = TableProperties("catalog.schema.table")

@@ -52,6 +52,12 @@
 
 ### Breaking Changes
 
+- **BREAKING**: Host endpoints now require `https://` scheme
+  - **Impact**: `SERVER_ENDPOINT` and `UNITY_CATALOG_ENDPOINT` must include `https://` prefix
+  - **Migration**: Update endpoint URLs to include `https://`
+  - Old: `SERVER_ENDPOINT = "your-shard-id.zerobus.region.cloud.databricks.com"`
+  - New: `SERVER_ENDPOINT = "https://your-shard-id.zerobus.region.cloud.databricks.com"`
+
 - **BREAKING**: Removed `create_stream_with_headers_provider()` method
   - **Migration**: Use `create_stream()` with the `headers_provider` parameter instead
   - Old: `sdk.create_stream_with_headers_provider(custom_provider, table_properties, options)`

@@ -29,10 +29,10 @@ Set the following environment variables:
 export DATABRICKS_CLIENT_ID="your-service-principal-application-id"
 export DATABRICKS_CLIENT_SECRET="your-service-principal-secret"
 # For AWS:
-export ZEROBUS_SERVER_ENDPOINT="workspace-id.zerobus.region.cloud.databricks.com"
+export ZEROBUS_SERVER_ENDPOINT="https://workspace-id.zerobus.region.cloud.databricks.com"
 export DATABRICKS_WORKSPACE_URL="https://your-workspace.cloud.databricks.com"
 # For Azure:
-# export ZEROBUS_SERVER_ENDPOINT="workspace-id.zerobus.region.azuredatabricks.net"
+# export ZEROBUS_SERVER_ENDPOINT="https://workspace-id.zerobus.region.azuredatabricks.net"
 # export DATABRICKS_WORKSPACE_URL="https://your-workspace.azuredatabricks.net"
 export ZEROBUS_TABLE_NAME="catalog.schema.table"
 ```

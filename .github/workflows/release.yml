@@ -1,6 +1,3 @@
-# Build & Release workflow using only GitHub-official actions
-# Compatible with enterprise GitHub Actions policies
-
 name: Build & Release to PyPI
 
 on:
@@ -38,23 +35,24 @@ jobs:
       - name: Install maturin
         run: pip install maturin
 
-      - name: Build wheels (x86_64 - native)
+      - name: Build wheels (x86_64)
         if: matrix.target == 'x86_64'
         run: |
           cd rust
           maturin build --release --out ../dist
 
-      - name: Install Zig (for aarch64 cross-compile)
+      - name: Install Zig (for aarch64)
         if: matrix.target == 'aarch64'
         run: |
           wget -q https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
           tar -xf zig-linux-x86_64-0.13.0.tar.xz
           echo "$(pwd)/zig-linux-x86_64-0.13.0" >> $GITHUB_PATH
 
-      - name: Build wheels (aarch64 - Zig cross-compile)
+      - name: Build wheels (aarch64)
         if: matrix.target == 'aarch64'
         run: |
           source "$HOME/.cargo/env"
+          rustup target add aarch64-unknown-linux-gnu
           cargo install cargo-zigbuild
           cd rust
           maturin build --release --target aarch64-unknown-linux-gnu --zig --out ../dist
@@ -70,15 +68,11 @@ jobs:
     runs-on:
       group: databricks-protected-runner-group
       labels: windows-server-latest
-    strategy:
-      matrix:
-        target: [x64]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.9'
-          architecture: ${{ matrix.target }}
 
       - name: Install Rust
         run: |
@@ -98,55 +92,7 @@ jobs:
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-windows-${{ matrix.target }}
-          path: dist
-          if-no-files-found: error
-
-  # EXPERIMENTAL: macOS via Zig cross-compilation
-  macos:
-    runs-on:
-      group: databricks-protected-runner-group
-      labels: linux-ubuntu-latest
-    continue-on-error: true
-    strategy:
-      matrix:
-        target: [x86_64-apple-darwin, aarch64-apple-darwin]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.9'
-
-      - name: Install Rust
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-          source "$HOME/.cargo/env"
-
-          # Add macOS targets
-          rustup target add x86_64-apple-darwin
-          rustup target add aarch64-apple-darwin
-
-      - name: Install Zig
-        run: |
-          wget -q https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
-          tar -xf zig-linux-x86_64-0.13.0.tar.xz
-          echo "$(pwd)/zig-linux-x86_64-0.13.0" >> $GITHUB_PATH
-
-      - name: Install cargo-zigbuild and maturin
-        run: |
-          cargo install cargo-zigbuild
-          pip install maturin
-
-      - name: Build wheels
-        run: |
-          cd rust
-          maturin build --release --target ${{ matrix.target }} --zig --out ../dist
-
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-macos-${{ matrix.target }}
+          name: wheels-windows
           path: dist
           if-no-files-found: error
 
@@ -168,7 +114,7 @@ jobs:
       - name: Install maturin
         run: pip install maturin
 
-      - name: Build sdist
+      - name: Build source distribution
         run: maturin sdist --manifest-path rust/Cargo.toml --out dist
 
       - name: Upload sdist
@@ -184,12 +130,11 @@ jobs:
       group: databricks-protected-runner-group
       labels: linux-ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [linux, windows, macos, sdist]
+    needs: [linux, windows, sdist]
     permissions:
-      id-token: write  # Required for trusted publishing
-      contents: write  # For GitHub releases
+      id-token: write
     steps:
-      - name: Download all artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: wheels-*
