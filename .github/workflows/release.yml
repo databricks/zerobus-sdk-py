@@ -37,9 +37,7 @@ jobs:
 
       - name: Build wheels (x86_64)
         if: matrix.target == 'x86_64'
-        run: |
-          cd rust
-          maturin build --release --out ../dist
+        run: maturin build --release --manifest-path rust/Cargo.toml --out dist
 
       - name: Install Zig (for aarch64)
         if: matrix.target == 'aarch64'
@@ -54,8 +52,7 @@ jobs:
           source "$HOME/.cargo/env"
           rustup target add aarch64-unknown-linux-gnu
           cargo install cargo-zigbuild
-          cd rust
-          maturin build --release --target aarch64-unknown-linux-gnu --zig --out ../dist
+          maturin build --release --target aarch64-unknown-linux-gnu --zig --manifest-path rust/Cargo.toml --out dist
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -84,9 +81,7 @@ jobs:
         run: pip install maturin
 
       - name: Build wheels
-        run: |
-          cd rust
-          maturin build --release --out ../dist
+        run: maturin build --release --manifest-path rust/Cargo.toml --out dist
         shell: bash
 
       - name: Upload wheels
