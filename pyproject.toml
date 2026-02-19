@@ -49,6 +49,7 @@ dev = [
 python-source = "."
 module-name = "zerobus._zerobus_core"
 features = ["pyo3/extension-module"]
+include = [{path = "NOTICE", format = "sdist"}]
 
 [tool.black]
 line-length = 120
